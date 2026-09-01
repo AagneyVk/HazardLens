@@ -1,5 +1,9 @@
 # Model registry and research rationale
 
+The indoor 0.4.0 spatial model is specified in [Spatial model audit](spatial-models.md).
+It supersedes the legacy indoor plume, tank-heating and ignition assumptions below;
+the original outdoor benchmark retains its reference models.
+
 Reviewed 2026-09-01. These sources inform architecture and validation discipline;
 HazardLens does not implement or claim conformance to the listed standards or tools.
 

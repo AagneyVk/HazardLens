@@ -26,7 +26,7 @@ export class ViewerSimulation {
         .every(id => { const p = runtime.get(id)?.state; return p && p.integrity > 0 && p.metadata.available === true; }));
     if (!available.length) throw new Error('Emergency response is unavailable. Check control and access-road twins.');
     let count = 0;
-    for (const fire of snapshot.twins.filter(t => t.kind === 'fire' && t.active)) {
+    for (const fire of snapshot.twins.filter(t => t.active&&(t.kind === 'fire'||Number(t.metadata.burningCells)>0))) {
       runtime.emit({ type: 'suppression.command', sourceId: available[0].id, targetId: fire.id, payload: { strength: available.length * 2 } });
       count++;
     }

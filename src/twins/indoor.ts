@@ -15,11 +15,11 @@ export class ExplosionTwin extends BaseTwin {
       this.emitted = true;
       for (const twin of context.twins()) {
         if (twin.state.integrity<=0||!['tank','pipe','wall', 'reactor', 'pump', 'compressor', 'cooling','control','emergency'].includes(twin.state.kind)) continue;
-        const distance = Math.hypot(twin.state.position.x - this.state.position.x, twin.state.position.z - this.state.position.z);
+        const distance = Math.hypot(twin.state.position.x - this.state.position.x,twin.state.position.y-this.state.position.y, twin.state.position.z - this.state.position.z);
         const damage = Math.min(1, 2 * this.severity / (1 + (distance / 5) ** 2));
         if (distance > Number(this.state.metadata.radiusM) || damage < .1) continue;
         context.emit({ type: 'fault.asset', sourceId: this.state.id, targetId: twin.state.id,
-          payload: { mode: ['tank','pipe'].includes(twin.state.kind)?'rupture':'structural_damage', severity: damage, mechanism:'blast' } });
+          payload: { mode:'structural_damage', severity: damage, mechanism:'blast' } });
       }
     }
     this.age += dt; this.state.metadata.age = this.age;

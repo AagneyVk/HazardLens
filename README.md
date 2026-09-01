@@ -93,6 +93,7 @@ the integrated generator and graph.
 
 ## Documentation
 
+- [Spatial indoor transport, thermal model audit and verification limits](docs/spatial-models.md)
 - [Multi-twin domino propagation and live causal view](docs/domino-propagation.md)
 - [Indoor redesign, research and effect limitations](docs/indoor-redesign.md)
 - [Architecture and contracts](docs/architecture.md)

@@ -1,5 +1,9 @@
 # Multi-twin domino propagation
 
+**Updated model:** [Spatial indoor models](spatial-models.md) supersedes the
+single-cloud and automatic flash-impulse rules below. Indoor releases now use local
+fuel cells and wall-aware transport. Automatic cloud explosions have been removed.
+
 No incident sequence is scripted. A blast twin delivers one distance-attenuated
 impulse to nearby structures, equipment and containment. Tanks rupture and pipes
 leak; releases intersecting an active fire, early blast flash or enabled ignition

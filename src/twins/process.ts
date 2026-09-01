@@ -31,6 +31,7 @@ export class PipeTwin extends BaseTwin {
  onEvent(event:SimEvent,context:TwinContext):void{
   this.record(event,`processed ${event.type}`);
   if(applyOperatorFault(this,event,context)){
+   if(event.payload.mode==='structural_damage'){this.state.integrity=Math.max(0,this.state.integrity-Number(event.payload.severity));if(this.state.integrity<=.5){this.failed=true;this.release(context,2.5*Number(event.payload.severity),event.id)}}
    if(event.payload.mode==="rupture"&&this.state.active)this.release(context,2.5*Number(event.payload.severity),event.id);
    return;
   }
@@ -57,9 +58,23 @@ export class TankTwin extends BaseTwin {
  }
  onEvent(event:SimEvent,context:TwinContext):void{
  if(this.failed)return;
+ if(this.state.metadata.indoor===true&&event.type==='thermal.exposure'&&event.targetId===this.state.id){
+  const dose=Number(event.payload.heatFluxKwM2)*Number(event.payload.durationS??1);
+  if(!Number.isFinite(dose)||dose<0)return;
+  // 6 mm steel shell: rho * thickness * cp = 23.55 kJ/(m² K).
+  const capacity=23.55;this.heatDose+=dose;this.state.temperatureK+=.7*dose/capacity;
+  this.state.metadata.shellHeatCapacityKjM2K=capacity;this.state.metadata.absorbedHeatKjM2=.7*this.heatDose;
+  this.state.metadata.failureRisk=Math.min(1,Math.max(0,(this.state.temperatureK-303)/(650-303)));
+  this.state.metadata.damageState=this.state.temperatureK>500?'buckling':this.state.temperatureK>380?'heat-stressed':'normal';
+  if(this.state.temperatureK>=650){this.failed=true;this.state.integrity=0;this.state.active=false;this.state.metadata.damageState='ruptured';
+   context.emit({type:'asset.failed',sourceId:this.state.id,causedBy:event.id,payload:{kind:'tank',mode:'thermal-shell-failure',temperatureK:this.state.temperatureK}});
+   context.emit({type:'release.created',sourceId:this.state.id,causedBy:event.id,payload:{chemical:this.chemical,rateKgS:2.4,origin:{...this.state.position}}});
+  }return;
+ }
  if(applyOperatorFault(this,event,context)){
   this.record(event,"operator disturbance");
-  if(event.payload.mode==="rupture"){
+  if(event.payload.mode==='structural_damage')this.state.integrity=Math.max(0,this.state.integrity-Number(event.payload.severity));
+  if(event.payload.mode==="rupture"||(event.payload.mode==='structural_damage'&&this.state.integrity<=.4)){
    this.failed=true;this.state.active=false;this.state.integrity=0;
    context.emit({type:"asset.failed",sourceId:this.state.id,causedBy:event.id,payload:{kind:"tank",mode:"rupture"}});
    context.emit({type:"release.created",sourceId:this.state.id,causedBy:event.id,payload:{chemical:this.chemical,rateKgS:2.4*Number(event.payload.severity),origin:{...this.state.position}}});
@@ -68,7 +83,7 @@ export class TankTwin extends BaseTwin {
  }
  if(event.type!=="thermal.exposure"||event.targetId!==this.state.id||this.failed)return;this.record(event,"thermal exposure received");const flux=Number(event.payload.heatFluxKwM2??0)*Number(event.payload.durationS??1);this.heatDose+=flux;this.state.temperatureK+=flux*.018;this.state.integrity=Math.max(0,this.state.integrity-flux*.00008);this.state.metadata.failureRisk=Math.min(.99,this.heatDose/16000);if(this.heatDose>=900||this.state.temperatureK>=520||this.state.integrity<=.65){this.failed=true;this.state.active=false;this.state.integrity=0;context.emit({type:"asset.failed",sourceId:this.state.id,payload:{kind:"tank",mode:"thermal-rupture",heatDose:this.heatDose}});context.emit({type:"release.created",sourceId:this.state.id,payload:{chemical:this.chemical,rateKgS:2.4,origin:{...this.state.position}}});context.emit({type:"fire.created",sourceId:this.state.id,payload:{origin:{...this.state.position},intensityMw:7}})}}
  withdrawFuel(requestedKg:number){if(!Number.isFinite(requestedKg)||requestedKg<=0)return 0;const amount=Math.min(this.inventoryKg,requestedKg);this.inventoryKg-=amount;this.withdrawnKg+=amount;this.state.metadata.inventoryKg=this.inventoryKg;return amount}
- tick():void{}
+ tick(dt:number):void{if(this.state.metadata.indoor!==true)return;const t=this.state.temperatureK;const loss=Math.max(0,.01*(t-303)+.7*5.670374419e-11*(t**4-303**4));this.state.temperatureK=Math.max(303,t-loss*dt/23.55)}
  clone():Twin{const c=new TankTwin(this.state.id,{...this.state.position},this.chemical);c.heatDose=this.heatDose;c.failed=this.failed;c.inventoryKg=this.inventoryKg;c.withdrawnKg=this.withdrawnKg;Object.assign(c.state,cloneState(this.state));return c}
 }
 
@@ -89,4 +104,3 @@ export class WallTwin extends BaseTwin {
  tick():void{}
  clone():Twin{const c=new WallTwin(this.state.id,{...this.state.position});Object.assign(c.state,cloneState(this.state));return c}
 }
-

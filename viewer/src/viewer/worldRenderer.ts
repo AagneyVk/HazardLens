@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import type { TwinState, WorldSnapshot } from '../../../src/core/types.js';
 import { indoorAsset } from './indoorAssets.js';
-import { FireEffect, BlastEffect, createDebris, updateDebris } from './indoorEffects.js';
+import { FireEffect, BlastEffect, FloorGasEffect, createVesselDebris, createDebris, updateDebris } from './indoorEffects.js';
 export class WorldRenderer {
   private objects = new Map<string, THREE.Group>();
   private fires = new Map<string, FireEffect>();
+  private floorGas=new Map<string,FloorGasEffect>();
   private blasts = new Map<string, BlastEffect>();
   private collapsed = new Map<string, { root: THREE.Group; started: number }>();
   private selected = new Set<string>();
@@ -25,9 +26,10 @@ export class WorldRenderer {
     for (const object of this.objects.values()) { this.scene.remove(object); this.disposeObject(object); }
     for (const { root } of this.collapsed.values()) { this.scene.remove(root); this.disposeObject(root); }
     for (const effect of this.fires.values()) effect.dispose();
-    this.objects.clear(); this.fires.clear(); this.blasts.clear(); this.collapsed.clear();
+    this.objects.clear(); this.fires.clear(); this.floorGas.clear(); this.blasts.clear(); this.collapsed.clear();
   }
   private disposeObject(object: THREE.Object3D) {
+    object.traverse(c=>{if(c instanceof THREE.InstancedMesh)c.dispose()});
     object.traverse(c => { if (c instanceof THREE.Mesh || c instanceof THREE.Points || c instanceof THREE.Sprite) { if ('geometry' in c) c.geometry.dispose(); for (const m of Array.isArray(c.material) ? c.material : [c.material]) { if ('map' in m) (m.map as THREE.Texture | null)?.dispose(); m.dispose(); } } });
   }
   sync(snapshot: WorldSnapshot, _dt = .016) {
@@ -46,6 +48,7 @@ export class WorldRenderer {
       if (!object) {
         if (twin.kind === 'fire') { const fx = new FireEffect(); this.fires.set(twin.id, fx); object = fx.root; }
         else if (twin.kind === 'explosion') { const fx = new BlastEffect(); this.blasts.set(twin.id, fx); object = fx.root; }
+        else if(twin.gasCells){const fx=new FloorGasEffect();this.floorGas.set(twin.id,fx);object=fx.root}
         else if (twin.kind === 'release') { object = new THREE.Group(); object.add(new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshStandardMaterial({ color: 0xa7bbad, transparent: true, opacity: .1, depthWrite: false }))); }
         else object = indoorAsset(twin);
         object.userData.twinId = twin.id; this.objects.set(twin.id, object); this.scene.add(object);
@@ -61,15 +64,21 @@ export class WorldRenderer {
         this.fires.get(twin.id)!.update(snapshot.time, Number(twin.metadata.intensityMw));
       }
       else if (twin.kind === 'explosion') this.blasts.get(twin.id)!.update(Number(twin.metadata.age), Number(twin.metadata.radiusM));
+      else if(twin.gasCells){object.position.set(0,0,0);this.floorGas.get(twin.id)!.update(twin,snapshot.time)}
       else if (twin.kind === 'release') { const r = Number(twin.metadata.radiusM); object.scale.set(r, Math.min(2, r * .5), r); }
       else if (twin.kind === 'worker') {
         object.rotation.y = Number(twin.metadata.heading); const moving = Number(twin.metadata.speed) > .01, phase = snapshot.time * 9 + Number(twin.id.slice(-1));
         for (const [name, direction] of [['armL', 1], ['armR', -1], ['legL', -1], ['legR', 1]] as const) object.getObjectByName(name)!.rotation.x = moving ? Math.sin(phase) * .55 * direction : Math.sin(snapshot.time * 1.4) * .03;
+      } else if(['tank','reactor'].includes(twin.kind)&&twin.integrity===0){
+        object.visible=false;let debris=this.collapsed.get(twin.id);
+        if(!debris){const root=createVesselDebris(twin.kind==='tank'?1.15:1.45,twin.kind==='tank'?3.5:4.8);root.position.copy(object.position);root.userData.twinId=twin.id;this.scene.add(root);debris={root,started:snapshot.time};this.collapsed.set(twin.id,debris)}
+        updateDebris(debris.root,snapshot.time-debris.started);
       } else if (twin.kind === 'wall' && twin.integrity < .25) {
         object.visible = false; let debris = this.collapsed.get(twin.id);
         if (!debris) { const root = createDebris(Number(twin.metadata.widthM), Number(twin.metadata.heightM), Number(twin.metadata.depthM), twin.metadata.role === 'column'); root.position.copy(object.position); root.userData.twinId = twin.id; this.scene.add(root); debris = { root, started: snapshot.time }; this.collapsed.set(twin.id, debris); }
         updateDebris(debris.root, snapshot.time - debris.started);
       } else {
+        if(twin.kind==='tank'||twin.kind==='reactor'){const stress=Math.max(0,Math.min(1,(twin.temperatureK-380)/270));object.scale.set(1+stress*.12,1-stress*.09,1+stress*.12);object.rotation.z=stress*.07}
         object.traverse(child => {
           if (!(child instanceof THREE.Mesh) || !(child.material instanceof THREE.MeshStandardMaterial)) return;
           const material = child.material; if (child.userData.originalColor) material.color.copy(child.userData.originalColor);

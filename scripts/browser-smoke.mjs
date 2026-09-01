@@ -98,6 +98,25 @@ try {
   await page.evaluate(() => window.restoreTestContext());
   await assertSceneRendered();
   await page.screenshot({ path: 'artifacts/context-restored.png' });
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await page.getByLabel('Search assets', { exact: true }).fill('');
+  await page.getByRole('button', { name: 'Select P-001', exact: true }).click();
+  await page.getByRole('button', { name: 'Start leak', exact: true }).click();
+  await page.getByLabel('Failure severity', { exact: true }).fill('70');
+  await page.getByLabel('Simulation speed', { exact: true }).selectOption('5');
+  await page.getByRole('button', { name: 'Apply disturbance', exact: true }).click();
+  await page.waitForFunction(() => Number(document.querySelector('.hl-clock')?.textContent.replace('s','')) >= 8, null, { timeout: 90000 });
+  await page.getByRole('button', { name: 'Select T-001', exact: true }).click();
+  await page.getByRole('button', { name: 'Ignite fire', exact: true }).click();
+  await page.getByRole('button', { name: 'Apply disturbance', exact: true }).click();
+  await page.waitForFunction(() => Number(document.querySelector('[data-metric="fires"] strong')?.textContent) >= 2, null, { timeout: 90000 });
+  await page.getByRole('button', { name: 'Ⅱ Pause', exact: true }).click();
+  await page.screenshot({ path: 'artifacts/spatial-floor-fire.png' });
+  const spatialDownload=page.waitForEvent('download');await page.getByRole('button', { name: 'Export', exact: true }).click();
+  await (await spatialDownload).saveAs('artifacts/spatial-incident.json');
+  const spatial=JSON.parse(await readFile('artifacts/spatial-incident.json','utf8'));
+  assert.ok(spatial.snapshot.twins.some(t => t.gasCells?.some(c=>c.burning)), 'Flames must come from local fuel cells');
+  assert.ok(spatial.snapshot.events.some(e=>e.type==='release.ignited'&&e.payload.mechanism==='floor-flame-front'));
   assert.deepEqual(errors, [], 'Browser must not report uncaught errors');
   console.log('PASS: indoor WebGL, contextual actions, fire, blast, collapsed walls, evacuation, pause, forecast, export, multi-selection, isolation and mobile controls');
 } finally { await browser?.close(); server.kill('SIGTERM'); }

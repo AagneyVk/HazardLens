@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type {TwinState} from '../../../src/core/types.js';
 
 /** Soft procedural sprite, not opaque square particles. */
 function spriteTexture(smoke: boolean) {
@@ -50,6 +51,25 @@ export class BlastEffect {
   }
 }
 
+/** Two instanced draw calls cover the entire spatial field, including every burning cell. */
+export class FloorGasEffect{
+ readonly root=new THREE.Group();
+ private gas=new THREE.InstancedMesh(new THREE.PlaneGeometry(1.95,1.95),new THREE.MeshBasicMaterial({color:0x71c6ca,transparent:true,opacity:.17,depthWrite:false,side:THREE.DoubleSide}),513);
+ private map=spriteTexture(false);
+ private flame=new THREE.InstancedMesh(new THREE.PlaneGeometry(2,3),new THREE.MeshBasicMaterial({map:this.map,transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}),1026);
+ constructor(){this.gas.frustumCulled=this.flame.frustumCulled=false;this.root.add(this.gas,this.flame)}
+ update(twin:TwinState,time:number){const pose=new THREE.Object3D();let gasCount=0,fireCount=0;
+  for(const cell of twin.gasCells??[]){if(cell.volumeFraction<.001&&!cell.burning)continue;
+   pose.position.set(cell.x,.04,cell.z);pose.rotation.set(-Math.PI/2,0,0);pose.scale.setScalar(1);pose.updateMatrix();this.gas.setMatrixAt(gasCount,pose.matrix);this.gas.setColorAt(gasCount++,new THREE.Color(cell.volumeFraction>.095?0xc28d53:cell.volumeFraction>=.021?0xe2c05c:0x71c6ca));
+   if(cell.burning){const height=.5+Math.min(2,cell.massKg*5),flicker=1+.13*Math.sin(time*13+cell.index);for(let side=0;side<2;side++){pose.position.set(cell.x,height*.75,cell.z);pose.rotation.set(0,side*Math.PI/2,0);pose.scale.set(1,height*.5*flicker,1);pose.updateMatrix();this.flame.setMatrixAt(fireCount++,pose.matrix)}}
+  }this.gas.count=gasCount;this.flame.count=fireCount;this.gas.instanceMatrix.needsUpdate=this.flame.instanceMatrix.needsUpdate=true;if(this.gas.instanceColor)this.gas.instanceColor.needsUpdate=true;
+ }
+}
+
+export function createVesselDebris(radius:number,height:number){const root=new THREE.Group(),material=new THREE.MeshStandardMaterial({color:0x59666b,metalness:.7,roughness:.65,side:THREE.DoubleSide});
+ for(let i=0;i<8;i++){const angle=i*Math.PI/4;const piece=new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,height,8,1,true,angle,Math.PI/4*.9),material);piece.userData.start=new THREE.Vector3(Math.sin(angle)*.5,height/2,Math.cos(angle)*.5);piece.castShadow=piece.receiveShadow=true;root.add(piece)}return root;
+}
+
 export function createDebris(width: number, height: number, depth: number, column: boolean) {
   const root = new THREE.Group(), material = new THREE.MeshStandardMaterial({ color: column ? 0x48565e : 0x92958d, roughness: .95 });
   const count = column ? 5 : 20;
@@ -67,7 +87,7 @@ export function updateDebris(root: THREE.Group, elapsed: number) {
   root.children.forEach((piece, i) => {
     const start = piece.userData.start as THREE.Vector3, flight = Math.sqrt(Math.max(.1, start.y) / 4.9), time = Math.min(elapsed, flight + .8);
     const landing = Math.max(.14, start.y - 4.9 * time * time);
-    piece.position.set(start.x + Math.sin(i * 2.4) * Math.min(time, flight) * 1.2, landing + (elapsed > flight ? Math.max(0, .22 * Math.exp(-(elapsed - flight) * 5) * Math.sin((elapsed - flight) * 15)) : 0), Math.cos(i * 2.4) * Math.min(time, flight) * 1.5);
+    piece.position.set(start.x + Math.sin(i * 2.4) * Math.min(time, flight) * 1.2, landing + (elapsed > flight ? Math.max(0, .22 * Math.exp(-(elapsed - flight) * 5) * Math.sin((elapsed - flight) * 15)) : 0), start.z+Math.cos(i * 2.4) * Math.min(time, flight) * 1.5);
     piece.rotation.set(Math.min(time, flight) * (i % 2 ? 1 : -1), i + time * .2, Math.min(time, flight) * .5);
   });
 }

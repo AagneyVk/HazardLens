@@ -2,6 +2,7 @@ import type { FacilityTwinGraph } from '../facility/graph.js';
 import type { SimEvent, Twin, TwinContext, WorldSnapshot, Vec3 } from './types.js';
 import { FireTwin, ReleaseTwin } from '../twins/hazards.js';
 import { ExplosionTwin } from '../twins/indoor.js';
+import {FloorGasTwin} from '../twins/floorGas.js';
 
 export interface SnapshotOptions { eventLimit?: number; includeGraph?: boolean; significantOnly?: boolean; }
 export class SimulationRuntime {
@@ -63,9 +64,8 @@ export class SimulationRuntime {
     if(event.type==='release.ignited'){
       const release=this.get(String(event.payload.releaseId));
       if(!(release instanceof ReleaseTwin))return;
-      // One flash impulse per cloud; fuel is deducted before the sustained fire.
-      const mass=release.massKg;
-      if(mass>=2){const burned=release.consumeFuel(mass*.15);this.emit({type:'explosion.created',sourceId:release.state.id,causedBy:event.id,payload:{origin:{...release.state.position},severity:Math.min(.75,burned/4),mechanism:'cloud-flash'}})}
+      if(release instanceof FloorGasTwin){if(!release.state.metadata.alarmSent){release.state.metadata.alarmSent=true;this.emit({type:'evacuation.command',sourceId:release.state.id,causedBy:event.id,payload:{}})}return}
+      // Ignition alone is not evidence of destructive overpressure.
       this.emit({type:'fire.created',sourceId:release.state.id,causedBy:event.id,payload:{origin:{...release.state.position},intensityMw:Math.max(.5,release.rateKgS*8)}});
       return;
     }
@@ -92,7 +92,7 @@ export class SimulationRuntime {
       // A source owns one evolving release; repeat faults update its rate instead of multiplying supply.
       const existing = [...this.registry.values()].find(t => t instanceof ReleaseTwin && t.sourceId === event.sourceId && t.state.active) as ReleaseTwin | undefined;
       if (existing) { existing.rateKgS = rate; return; }
-      this.add(new ReleaseTwin(id, origin, event.sourceId, rate));
+      this.add(this.get(event.sourceId)?.state.metadata.indoor===true?new FloorGasTwin(id,origin,event.sourceId,rate):new ReleaseTwin(id, origin, event.sourceId, rate));
     } else {
       const intensity = Number(event.payload.intensityMw);
       if (!Number.isFinite(intensity) || intensity <= 0) throw new Error('Invalid fire intensity');

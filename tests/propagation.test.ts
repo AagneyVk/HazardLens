@@ -5,7 +5,7 @@ import {PipeTwin,TankTwin} from '../src/twins/process.js';
 import {FireTwin,ReleaseTwin} from '../src/twins/hazards.js';
 import {ExplosionTwin} from '../src/twins/indoor.js';
 
-test('a nearby fire ignites accumulated gas once, conserving flash fuel',()=>{
+test('a nearby fire ignites accumulated gas once without inventing blast pressure',()=>{
  const pipe=new PipeTwin('pipe',{x:0,y:0,z:0});pipe.leakRateKgS=2;
  const release=new ReleaseTwin('gas',pipe.state.position,'pipe',2);
  const runtime=new SimulationRuntime([pipe,release]);runtime.run(2,.05);
@@ -13,7 +13,7 @@ test('a nearby fire ignites accumulated gas once, conserving flash fuel',()=>{
  const events=runtime.snapshot().events;
  assert.equal(events.filter(e=>e.type==='release.ignited').length,1);
  const ignition=events.find(e=>e.type==='release.ignited')!;assert.equal(ignition.sourceId,'spark');assert.equal(ignition.targetId,'gas');
- assert.ok(events.some(e=>e.type==='explosion.created'&&e.causedBy===ignition.id));
+ assert.equal(events.some(e=>e.type==='explosion.created'),false);
  assert.ok(events.some(e=>e.type==='fire.created'&&e.causedBy===ignition.id));
  assert.ok(Math.abs(release.receivedKg-release.massKg-release.burnedKg-release.dispersedKg)<1e-8);
  const clone=runtime.clone();runtime.run(.5,.05);clone.run(.5,.05);assert.deepEqual(clone.snapshot(),runtime.snapshot());

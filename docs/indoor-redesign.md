@@ -1,5 +1,9 @@
 # Indoor response lab
 
+See [Spatial indoor model audit](spatial-models.md) for the current floor-gas,
+wall-blocking, vessel-deformation and rupture behavior; it supersedes the original
+single-cloud rendering and model assumptions documented here.
+
 The default viewer now uses a compact cutaway factory, not the previous outdoor tank
 farm. `generateIndoorFacility()` owns the hall's equipment, selectable wall bays and
 columns, eight workers and two exits. The larger generator remains available for core

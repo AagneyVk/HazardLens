@@ -38,6 +38,7 @@ export interface TwinState {
   integrity:number;
   temperatureK:number;
   metadata:Record<string,string|number|boolean>;
+  gasCells?:Array<{index:number;x:number;z:number;massKg:number;volumeFraction:number;burning:boolean}>;
 }
 
 export interface TwinMetadata {

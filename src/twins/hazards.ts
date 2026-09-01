@@ -1,6 +1,7 @@
 import type { SimEvent, Twin, TwinContext, Vec3 } from '../core/types.js';
 import { BaseTwin } from './base.js';
 import { IgnitionSourceTwin, WeatherTwin, PipeTwin } from './process.js';
+import {blockedByWall} from './barriers.js';
 const distance = (a:Vec3,b:Vec3) => Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
 
 /** Well-mixed inventory reference model, not a concentration or toxic-dose model. */
@@ -10,7 +11,7 @@ export class ReleaseTwin extends BaseTwin {
   super({id,kind:'release',position:{...position},fidelity:2,active:true,integrity:1,temperatureK:303,metadata:{radiusM:.5,ignited:false,massKg:0}},
    {physicalProfile:{material:'gas',properties:{rateKgS,model:'inventory-reference-v1'}}});
  }
- onEvent(){}
+ onEvent(_event:SimEvent,_context:TwinContext){}
  consumeFuel(requestedKg:number):number{
   if(!Number.isFinite(requestedKg)||requestedKg<=0)return 0;
   const amount=Math.min(this.massKg,requestedKg);this.massKg-=amount;this.burnedKg+=amount;this.syncMass();return amount;
@@ -61,7 +62,9 @@ export class FireTwin extends BaseTwin {
   if(effective<=1e-9){this.state.active=false;return}
   for(const twin of context.twins()){
    if(twin.state.integrity<=0||!['tank','wall','pipe','reactor','pump','compressor','cooling','control','emergency'].includes(twin.state.kind))continue;
-   const radius=Math.max(1,distance(this.state.position,twin.state.position)),flux=Math.min(80,effective*120/(radius*radius));
+   const indoor=twin.state.metadata.indoor===true;
+   if(indoor&&blockedByWall({...this.state.position,y:1},{...twin.state.position,y:1},context.twins(),twin.state.id))continue;
+   const radius=Math.max(1,distance(this.state.position,twin.state.position)),flux=Math.min(80,effective*(indoor?.3*1000/(4*Math.PI):120)/(radius*radius));
    if(flux>1)context.emit({type:'thermal.exposure',sourceId:this.state.id,targetId:twin.state.id,payload:{heatFluxKwM2:flux,durationS:dt}});
   }
  }

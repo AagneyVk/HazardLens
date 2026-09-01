@@ -1,5 +1,13 @@
 # Changelog
 
+## Spatial indoor propagation
+
+- Replace indoor spherical gas with conservative floor-layer transport and local burning.
+- Block gas/thermal paths at standing walls; permit transport through openings and failed bays.
+- Remove automatic cloud explosions, add flammability-window checks and fuel-limited heat.
+- Add tank shell heat capacity/cooling, visible stress, and segmented vessel rupture.
+- Integrate floor-fire suppression, reporting, diagnostic coloring and numerical tests.
+
 ## Indoor response lab
 
 - Replace the default outdoor view with a compact cutaway factory, PBR equipment,
