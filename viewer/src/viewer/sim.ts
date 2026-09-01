@@ -1,3 +1,4 @@
+import { injectFailures, type FailureRequest } from '../../../src/core/failures.js';
 import { SimulationRuntime } from '../../../src/core/runtime.js';
 import type { Twin, WorldSnapshot } from '../../../src/core/types.js';
 import { IgnitionSourceTwin, PipeTwin, TankTwin, WallTwin, WeatherTwin } from '../../../src/twins/process.js';
@@ -25,9 +26,12 @@ export class ViewerSimulation {
   return new SimulationRuntime(twins);
  }
  reset(){this.runtime=this.makeWorld();this.running=false;this.accumulator=0}
- breakPipe(id='P-017'){this.runtime.emit({type:'fault.pipe_leak',sourceId:'operator',targetId:id,payload:{rateKgS:1.25}});this.running=true}
+ inject(requests:readonly FailureRequest[]){injectFailures(this.runtime,requests);if(requests.length)this.running=true}
+ breakPipe(id='P-017'){this.inject([{twinId:id,mode:'rupture',severity:.5}])}
+ toggleRunning(){this.running=!this.running;return this.running}
  suppress(){for(const t of this.runtime.snapshot().twins.filter(t=>t.kind==='fire'&&t.active))this.runtime.emit({type:'suppression.command',sourceId:'operator',targetId:t.id,payload:{strength:12}});this.running=true}
  isolatePipe(id='P-017'){this.runtime.emit({type:'valve.command',sourceId:'operator',payload:{pipeId:id}});this.running=true}
  update(realDt:number){if(!this.running)return;this.accumulator+=Math.min(realDt,.1)*this.speed;while(this.accumulator>=.05){this.runtime.step(.05);this.accumulator-=.05}}
  snapshot():WorldSnapshot{return this.runtime.snapshot()}
 }
+

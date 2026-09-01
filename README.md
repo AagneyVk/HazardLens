@@ -77,3 +77,32 @@ The project currently contains:
 - interactive twin inspection
 
 The next development phases focus on higher-fidelity industrial assets, consequence models, and expanded response simulation.
+
+
+## Free-form failure controls
+
+Select assets in the command panel (Ctrl/Cmd-click selects multiple) or click an
+asset in the 3D world. Shift/Ctrl/Cmd-click in 3D adds another target. Choose a
+shared failure mode and severity, then **Inject failure**. Repeat on any number
+of available assets; there is no fixed incident script or single target pipe.
+
+- Pipes and tanks: rupture or overheat.
+- Walls: structural damage or overheat.
+- Ignition sources: enable ignition. Severity does not affect this binary action.
+- Mixed selections offer only modes supported by every selected asset.
+- Isolation targets selected pipes; suppression targets active fires.
+- Pause/resume preserves the current world. Reset restores the initial facility.
+
+The core validates a complete batch before queuing commands. Simultaneous hazard
+creation uses unique event-derived IDs, and fault-generated release/failure events
+retain their initiating event ID. Invalid requests leave the queue unchanged.
+
+These are qualitative reference models: severity is a normalized disturbance
+control, not a calibrated pressure or temperature. Tank rupture releases material;
+ignition still depends on a nearby enabled source. Existing thermal propagation,
+plume, and isolation models require further physical validation before operational
+use. In particular, isolation currently reduces source flow rather than modelling
+transport and depletion of previously released material.
+
+`npm test` covers runtime and viewer-simulation integration. `npm run viewer:build`
+now also type-checks all viewer sources before bundling.

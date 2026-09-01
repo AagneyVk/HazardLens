@@ -1,4 +1,4 @@
-import { AssetRegistry } from "./assetRegistry";
+import { AssetRegistry } from "./assetRegistry.js";
 
 export interface FacilityGenerationConfig {
   tankCount: number;
@@ -53,3 +53,4 @@ export function generateIndustrialFacility(
 
   return registry.all();
 }
+
