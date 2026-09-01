@@ -18,6 +18,7 @@ export abstract class BaseTwin implements Twin {
   }
 
   protected record(event: SimEvent, summary: string): void {
+    if ((this.metadata.history?.length ?? 0) >= 256) this.metadata.history?.shift();
     this.metadata.history?.push({
       time: event.time,
       eventType: event.type,

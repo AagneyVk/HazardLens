@@ -7,7 +7,7 @@ import { IgnitionSourceTwin, TankTwin } from "../src/twins/process.js";
 test("sustained fire causes a secondary tank failure and new fire",()=>{
  const tank=new TankTwin("tank-b",{x:2,y:0,z:0});
  const rt=new SimulationRuntime([new FireTwin("primary",{x:0,y:0,z:0},8),tank,new IgnitionSourceTwin("spark",{x:2,y:0,z:0})]);
- rt.run(5,.25);
+ rt.run(15,.25);
  const snap=rt.snapshot();
  assert.equal(tank.failed,true);
  assert.ok(snap.events.some(e=>e.type==="asset.failed"&&e.sourceId==="tank-b"));
@@ -33,3 +33,4 @@ test("suppression can terminate propagation before secondary failure",()=>{
  assert.equal(tank.failed,false);
  assert.equal(rt.snapshot().events.some(e=>e.type==="asset.failed"&&e.sourceId==="protected"),false);
 });
+

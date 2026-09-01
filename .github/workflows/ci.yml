@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feat/federated-twin-foundation]
+    branches: [main, 'feat/**']
   pull_request:
 
 jobs:
@@ -18,3 +18,4 @@ jobs:
       - run: npm test
       - run: npm run demo
       - run: npm run viewer:build
+

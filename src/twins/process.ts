@@ -24,7 +24,7 @@ export class WeatherTwin extends BaseTwin {
 }
 
 export class PipeTwin extends BaseTwin {
- leakRateKgS=0; failed=false;
+ leakRateKgS=0; failed=false; isolated=false;
  constructor(id:string,position:TwinState["position"],public chemical="propane"){
   super({id,kind:"pipe",position,fidelity:1,active:true,integrity:1,temperatureK:303,metadata:{chemical}},physical("steel",{chemical}));
  }
@@ -35,12 +35,12 @@ export class PipeTwin extends BaseTwin {
    return;
   }
   if(event.type==="fault.pipe_leak"&&event.targetId===this.state.id)this.release(context,Number(event.payload.rateKgS??.3));
-  if(event.type==="thermal.exposure"&&event.targetId===this.state.id){const flux=Number(event.payload.heatFluxKwM2??0);this.state.temperatureK+=flux*.025;this.state.integrity=Math.max(0,this.state.integrity-flux*.00045);if(!this.failed&&(this.state.integrity<=.55||this.state.temperatureK>=390)){this.failed=true;context.emit({type:"asset.failed",sourceId:this.state.id,payload:{kind:"pipe",mode:"thermal-rupture"}});this.release(context,Math.max(.8,this.leakRateKgS*2.5));}}
-  if(event.type==="valve.command"&&event.payload.pipeId===this.state.id)this.leakRateKgS*=.08;
+  if(event.type==="thermal.exposure"&&event.targetId===this.state.id){const flux=Number(event.payload.heatFluxKwM2??0)*Number(event.payload.durationS??1);this.state.temperatureK+=flux*.025;this.state.integrity=Math.max(0,this.state.integrity-flux*.00045);if(!this.failed&&(this.state.integrity<=.55||this.state.temperatureK>=390)){this.failed=true;context.emit({type:"asset.failed",sourceId:this.state.id,payload:{kind:"pipe",mode:"thermal-rupture"}});this.release(context,Math.max(.8,this.leakRateKgS*2.5));}}
+  if(event.type==="valve.command"&&event.payload.pipeId===this.state.id){this.isolated=event.payload.closed!==false;if(this.isolated)this.leakRateKgS=0;this.state.metadata.isolated=this.isolated;}
  }
- private release(context:TwinContext,rate:number,causedBy?:string){if(!Number.isFinite(rate)||rate<=0)return;this.leakRateKgS=Math.max(this.leakRateKgS,rate);this.state.integrity=Math.max(0,this.state.integrity-.15);context.emit({type:"release.created",sourceId:this.state.id,causedBy,payload:{chemical:this.chemical,rateKgS:this.leakRateKgS,origin:{...this.state.position}}});}
+ private release(context:TwinContext,rate:number,causedBy?:string){if(!Number.isFinite(rate)||rate<=0||this.isolated)return;this.leakRateKgS=Math.max(this.leakRateKgS,rate);this.state.integrity=Math.max(0,this.state.integrity-.15);context.emit({type:"release.created",sourceId:this.state.id,causedBy,payload:{chemical:this.chemical,rateKgS:this.leakRateKgS,origin:{...this.state.position}}});}
  tick():void{}
- clone():Twin{const c=new PipeTwin(this.state.id,{...this.state.position},this.chemical);c.leakRateKgS=this.leakRateKgS;c.failed=this.failed;Object.assign(c.state,cloneState(this.state));return c}
+ clone():Twin{const c=new PipeTwin(this.state.id,{...this.state.position},this.chemical);c.leakRateKgS=this.leakRateKgS;c.failed=this.failed;c.isolated=this.isolated;Object.assign(c.state,cloneState(this.state));return c}
 }
 
 export class IgnitionSourceTwin extends BaseTwin {
@@ -65,7 +65,7 @@ export class TankTwin extends BaseTwin {
   }
   return;
  }
- if(event.type!=="thermal.exposure"||event.targetId!==this.state.id||this.failed)return;this.record(event,"thermal exposure received");const flux=Number(event.payload.heatFluxKwM2??0);this.heatDose+=flux;this.state.temperatureK+=flux*.018;this.state.integrity=Math.max(0,this.state.integrity-flux*.00008);this.state.metadata.failureRisk=Math.min(.99,this.heatDose/16000);if(this.heatDose>=900||this.state.temperatureK>=520||this.state.integrity<=.65){this.failed=true;this.state.active=false;this.state.integrity=0;context.emit({type:"asset.failed",sourceId:this.state.id,payload:{kind:"tank",mode:"thermal-rupture",heatDose:this.heatDose}});context.emit({type:"release.created",sourceId:this.state.id,payload:{chemical:this.chemical,rateKgS:2.4,origin:{...this.state.position}}});context.emit({type:"fire.created",sourceId:this.state.id,payload:{origin:{...this.state.position},intensityMw:7}})}}
+ if(event.type!=="thermal.exposure"||event.targetId!==this.state.id||this.failed)return;this.record(event,"thermal exposure received");const flux=Number(event.payload.heatFluxKwM2??0)*Number(event.payload.durationS??1);this.heatDose+=flux;this.state.temperatureK+=flux*.018;this.state.integrity=Math.max(0,this.state.integrity-flux*.00008);this.state.metadata.failureRisk=Math.min(.99,this.heatDose/16000);if(this.heatDose>=900||this.state.temperatureK>=520||this.state.integrity<=.65){this.failed=true;this.state.active=false;this.state.integrity=0;context.emit({type:"asset.failed",sourceId:this.state.id,payload:{kind:"tank",mode:"thermal-rupture",heatDose:this.heatDose}});context.emit({type:"release.created",sourceId:this.state.id,payload:{chemical:this.chemical,rateKgS:2.4,origin:{...this.state.position}}});context.emit({type:"fire.created",sourceId:this.state.id,payload:{origin:{...this.state.position},intensityMw:7}})}}
  tick():void{}
  clone():Twin{const c=new TankTwin(this.state.id,{...this.state.position},this.chemical);c.heatDose=this.heatDose;c.failed=this.failed;Object.assign(c.state,cloneState(this.state));return c}
 }
@@ -83,7 +83,7 @@ export class WallTwin extends BaseTwin {
   }
   return;
  }
- if(event.type!=="thermal.exposure"||event.targetId!==this.state.id)return;this.record(event,"wall thermal exposure");const flux=Number(event.payload.heatFluxKwM2??0);this.state.temperatureK+=flux*.01;this.state.integrity=Math.max(0,this.state.integrity-flux*.00004);this.state.metadata.damageState=this.state.integrity<.55?"severe":this.state.integrity<.8?"damaged":"normal"}
+ if(event.type!=="thermal.exposure"||event.targetId!==this.state.id)return;this.record(event,"wall thermal exposure");const flux=Number(event.payload.heatFluxKwM2??0)*Number(event.payload.durationS??1);this.state.temperatureK+=flux*.01;this.state.integrity=Math.max(0,this.state.integrity-flux*.00004);this.state.metadata.damageState=this.state.integrity<.55?"severe":this.state.integrity<.8?"damaged":"normal"}
  tick():void{}
  clone():Twin{const c=new WallTwin(this.state.id,{...this.state.position});Object.assign(c.state,cloneState(this.state));return c}
 }

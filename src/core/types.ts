@@ -1,5 +1,7 @@
+import type { FacilityTwinGraph, FacilityGraphSnapshot } from '../facility/graph.js';
 export type TwinKind =
   | "tank" | "pipe" | "valve" | "ignition" | "wall" | "weather"
+  | "reactor" | "pump" | "compressor" | "cooling" | "control" | "emergency" | "road"
   | "release" | "fire" | "suppression" | "worker" | "route";
 
 export type Fidelity = 0 | 1 | 2 | 3 | 4;
@@ -44,7 +46,7 @@ export interface TwinMetadata {
   history?: TwinHistoryEntry[];
 }
 
-export type EventType = "fault.asset"|"fault.pipe_leak"|"release.created"|"release.updated"|"release.ignited"|"fire.created"|"thermal.exposure"|"asset.failed"|"valve.command"|"suppression.command";
+export type EventType = "service.changed"|"fault.asset"|"fault.pipe_leak"|"release.created"|"release.updated"|"release.ignited"|"fire.created"|"thermal.exposure"|"asset.failed"|"valve.command"|"suppression.command";
 
 export interface SimEvent<T extends Record<string,unknown> = Record<string,unknown>> {
   id:string;
@@ -56,9 +58,10 @@ export interface SimEvent<T extends Record<string,unknown> = Record<string,unkno
   causedBy?:string;
 }
 
-export interface WorldSnapshot { time:number; twins:TwinState[]; events:SimEvent[]; }
+export interface WorldSnapshot { time:number; twins:TwinState[]; events:SimEvent[]; totalEvents?:number; historyTruncated?:boolean; graph?:FacilityGraphSnapshot; }
 
 export interface TwinContext {
+  graph?:FacilityTwinGraph;
   now:number;
   get(id:string):Twin|undefined;
   twins():readonly Twin[];
