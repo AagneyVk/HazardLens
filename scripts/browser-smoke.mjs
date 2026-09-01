@@ -13,10 +13,29 @@ try {
   assert.ok(ready, 'Viewer preview must start');
   browser = await chromium.launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--enable-webgl'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }), errors = [];
+  async function assertSceneRendered() {
+    await page.waitForFunction(() => document.querySelector('canvas')?.dataset.renderState === 'ready');
+    // Inspect actual canvas pixels, not just UI presence or a render counter.
+    const colors = await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => {
+      const source = document.querySelector('canvas'), copy = document.createElement('canvas');
+      copy.width = 160; copy.height = 100;
+      const context = copy.getContext('2d'); context.drawImage(source, 0, 0, 160, 100);
+      const pixels = context.getImageData(0, 0, 160, 100).data, unique = new Set();
+      for (let i = 0; i < pixels.length; i += 4) unique.add(`${pixels[i] >> 4},${pixels[i+1] >> 4},${pixels[i+2] >> 4}`);
+      resolve(unique.size);
+    })));
+    assert.ok(colors > 12, `Facility canvas must contain geometry, not a blank frame (${colors} colors)`);
+    assert.equal(await page.locator('canvas').count(), 1);
+  }
   page.on('pageerror', e => errors.push(e.message));
   await page.goto('http://127.0.0.1:4173', { waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'HazardLens', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Select T-001', exact: true }).waitFor();
+  await assertSceneRendered();
+  for (let reload = 0; reload < 2; reload++) {
+    await page.reload({ waitUntil: 'networkidle' });
+    await assertSceneRendered();
+  }
   assert.equal(await page.locator('canvas').count(), 1);
   await page.screenshot({ path: 'artifacts/indoor-overview.png' });
   await page.getByRole('button', { name: 'Select T-001', exact: true }).click();
@@ -38,6 +57,7 @@ try {
   assert.equal(report.snapshot.twins.filter(t => t.kind === 'worker').length, 8);
   assert.ok(report.snapshot.twins.some(t => t.kind === 'worker' && ['evacuating', 'safe'].includes(t.metadata.status)));
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await assertSceneRendered();
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   await page.getByRole('button', { name: 'Select T-001', exact: true }).click();
   await page.getByRole('button', { name: 'Trigger blast', exact: true }).click();
@@ -61,6 +81,18 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: 'artifacts/mobile-controls.png' });
   assert.ok(await page.getByRole('button', { name: 'Apply disturbance', exact: true }).isVisible());
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.evaluate(() => {
+    const canvas = document.querySelector('canvas');
+    const extension = canvas.getContext('webgl2').getExtension('WEBGL_lose_context');
+    if (!extension) throw new Error('Context-loss regression requires WEBGL_lose_context');
+    window.restoreTestContext = () => extension.restoreContext();
+    extension.loseContext();
+  });
+  await page.waitForFunction(() => document.querySelector('canvas')?.dataset.renderState === 'recovering');
+  await page.evaluate(() => window.restoreTestContext());
+  await assertSceneRendered();
+  await page.screenshot({ path: 'artifacts/context-restored.png' });
   assert.deepEqual(errors, [], 'Browser must not report uncaught errors');
   console.log('PASS: indoor WebGL, contextual actions, fire, blast, collapsed walls, evacuation, pause, forecast, export, multi-selection, isolation and mobile controls');
 } finally { await browser?.close(); server.kill('SIGTERM'); }
