@@ -55,11 +55,20 @@ export class SimulationRuntime {
     copy.history.push(...structuredClone(this.history)); copy.queue.push(...structuredClone(this.queue));
     return copy;
   }
-  private context(): TwinContext {
+  private context(causedBy?:string): TwinContext {
     return { graph: this.graph, now: this.time, get: id => this.registry.get(id),
-      twins: () => [...this.registry.values()], emit: event => this.emit(event) };
+      twins: () => [...this.registry.values()], emit: event => this.emit({...event,causedBy:event.causedBy??causedBy}) };
   }
   private materialize(event: SimEvent): void {
+    if(event.type==='release.ignited'){
+      const release=this.get(String(event.payload.releaseId));
+      if(!(release instanceof ReleaseTwin))return;
+      // One flash impulse per cloud; fuel is deducted before the sustained fire.
+      const mass=release.massKg;
+      if(mass>=2){const burned=release.consumeFuel(mass*.15);this.emit({type:'explosion.created',sourceId:release.state.id,causedBy:event.id,payload:{origin:{...release.state.position},severity:Math.min(.75,burned/4),mechanism:'cloud-flash'}})}
+      this.emit({type:'fire.created',sourceId:release.state.id,causedBy:event.id,payload:{origin:{...release.state.position},intensityMw:Math.max(.5,release.rateKgS*8)}});
+      return;
+    }
     if (event.type === 'fault.asset' && ['fire', 'explosion'].includes(String(event.payload.mode))) {
       const target = this.get(event.targetId ?? '');
       const severity = Number(event.payload.severity);
@@ -97,7 +106,7 @@ export class SimulationRuntime {
       const event = this.queue.shift()!;
       this.history.push(event); this.processedEvents++;
       this.materialize(event);
-      const context = this.context();
+      const context = this.context(event.id);
       if (event.targetId) this.registry.get(event.targetId)?.onEvent(event, context);
       else for (const twin of [...this.registry.values()]) twin.onEvent(event, context);
     }

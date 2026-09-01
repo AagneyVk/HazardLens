@@ -10,6 +10,7 @@ import { TwinInspector } from './inspector.js';
 import { createIndustrialEnvironment } from './sceneEnvironment.js';
 import { CommandCenter } from './commandCenter.js';
 import './style.css';
+import './chain.css';
 
 function boot(){
  const app=document.getElementById('app')!;

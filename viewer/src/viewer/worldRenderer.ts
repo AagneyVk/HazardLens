@@ -9,6 +9,8 @@ export class WorldRenderer {
   private collapsed = new Map<string, { root: THREE.Group; started: number }>();
   private selected = new Set<string>();
   private graphLines?: THREE.LineSegments;
+  private propagation?:THREE.LineSegments;
+  private propagationKey='';
   constructor(private scene: THREE.Scene) {}
   setSelection(ids: string[]) { this.selected = new Set(ids); }
   setGraph(graph: import('../../../src/facility/graph.js').FacilityGraphSnapshot) {
@@ -19,6 +21,7 @@ export class WorldRenderer {
   }
   toggleGraph() { if (this.graphLines) this.graphLines.visible = !this.graphLines.visible; return this.graphLines?.visible ?? false; }
   clear() {
+    if(this.propagation){this.scene.remove(this.propagation);this.propagation.geometry.dispose();(this.propagation.material as THREE.Material).dispose();this.propagation=undefined}this.propagationKey='';
     for (const object of this.objects.values()) { this.scene.remove(object); this.disposeObject(object); }
     for (const { root } of this.collapsed.values()) { this.scene.remove(root); this.disposeObject(root); }
     for (const effect of this.fires.values()) effect.dispose();
@@ -28,6 +31,15 @@ export class WorldRenderer {
     object.traverse(c => { if (c instanceof THREE.Mesh || c instanceof THREE.Points || c instanceof THREE.Sprite) { if ('geometry' in c) c.geometry.dispose(); for (const m of Array.isArray(c.material) ? c.material : [c.material]) { if ('map' in m) (m.map as THREE.Texture | null)?.dispose(); m.dispose(); } } });
   }
   sync(snapshot: WorldSnapshot, _dt = .016) {
+    const links=snapshot.events.filter(e=>e.targetId&&['fault.asset','release.ignited'].includes(e.type)&&snapshot.time-e.time<6).slice(-30);
+    const key=links.map(e=>e.id).join('|');
+    if(key!==this.propagationKey){
+      this.propagationKey=key;
+      if(this.propagation){this.scene.remove(this.propagation);this.propagation.geometry.dispose();(this.propagation.material as THREE.Material).dispose()}
+      const points:THREE.Vector3[]=[];
+      for(const event of links){const a=snapshot.twins.find(t=>t.id===event.sourceId),b=snapshot.twins.find(t=>t.id===event.targetId);if(a&&b)points.push(new THREE.Vector3(a.position.x,2,a.position.z),new THREE.Vector3(b.position.x,2,b.position.z))}
+      this.propagation=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(points),new THREE.LineDashedMaterial({color:0xffa94d,dashSize:.5,gapSize:.2,transparent:true,opacity:.8}));this.propagation.computeLineDistances();this.scene.add(this.propagation);
+    }
     for (const twin of snapshot.twins) {
       if (twin.kind === 'weather') continue;
       let object = this.objects.get(twin.id);
@@ -44,6 +56,8 @@ export class WorldRenderer {
         // Render at the vessel surface; do not move the model's radiation origin.
         const source = snapshot.twins.find(t => t.id === twin.metadata.fuelSourceId);
         object.position.y += source?.kind === 'tank' ? 3.8 : source?.kind === 'reactor' ? 5.1 : .4;
+        const spread=source?.kind==='release'?Math.min(3,Math.max(1,Number(source.metadata.radiusM)*.5)):1;
+        object.scale.set(spread,1,spread);
         this.fires.get(twin.id)!.update(snapshot.time, Number(twin.metadata.intensityMw));
       }
       else if (twin.kind === 'explosion') this.blasts.get(twin.id)!.update(Number(twin.metadata.age), Number(twin.metadata.radiusM));

@@ -93,6 +93,7 @@ the integrated generator and graph.
 
 ## Documentation
 
+- [Multi-twin domino propagation and live causal view](docs/domino-propagation.md)
 - [Indoor redesign, research and effect limitations](docs/indoor-redesign.md)
 - [Architecture and contracts](docs/architecture.md)
 - [Model registry, sources, and limitations](docs/model-register.md)

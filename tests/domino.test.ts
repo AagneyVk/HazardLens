@@ -33,4 +33,3 @@ test("suppression can terminate propagation before secondary failure",()=>{
  assert.equal(tank.failed,false);
  assert.equal(rt.snapshot().events.some(e=>e.type==="asset.failed"&&e.sourceId==="protected"),false);
 });
-

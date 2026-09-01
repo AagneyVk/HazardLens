@@ -28,13 +28,17 @@ export class CommandCenter {
   private apply: HTMLButtonElement; private pause: HTMLButtonElement; private clock = document.createElement('span');
   private metrics = document.createElement('div'); private events = document.createElement('div'); private forecastPanel = document.createElement('section');
   private lastAssets = ''; private lastMetrics = ''; private lastEvents = -1;
+  private chain=document.createElement('section');
   constructor(private actions: Actions) {
     const header = document.createElement('header'); header.className = 'hl-topbar';
     header.innerHTML = '<div class="hl-brand"><span class="hl-mark">H</span><div><h1>HazardLens</h1><span>INDOOR RESPONSE LAB</span></div></div><div class="hl-location"><i></i> Factory hall <span>/</span> Cutaway view</div>';
     const tools = document.createElement('div'); tools.className = 'hl-header-tools';
     tools.append(button('Overview', actions.overview), button('Connections', () => actions.graph()), button('Export', actions.export), button('Reset', () => {
       actions.reset(); this.selected.clear(); this.lastAssets = ''; this.lastMetrics = ''; this.lastEvents = -1; this.editor.hidden = true; this.pause.textContent = '▶ Run'; this.feedback.textContent = ''; this.forecastPanel.hidden = true;
-    })); header.append(tools); document.body.append(header);
+    }));
+    tools.append(button('Domino chain',()=>{this.chain.hidden=!this.chain.hidden}));
+    this.chain.className='hl-chain';this.chain.hidden=true;this.chain.setAttribute('aria-label','Domino chain');document.body.append(this.chain);
+    header.append(tools); document.body.append(header);
     this.root.className = 'hl-browser'; this.root.setAttribute('aria-label', 'Facility assets');
     const browserHeading = document.createElement('h2'); browserHeading.textContent = 'Explore the hall';
     const hint = document.createElement('p'); hint.textContent = 'Pick an object in 3D or below.';
@@ -101,5 +105,19 @@ export class CommandCenter {
     const values = [[count('fire'), 'fires'], [count('release'), 'releases'], [snapshot.twins.filter(t => t.kind === 'wall' && t.integrity < .25).length, 'collapsed'], [snapshot.twins.filter(t => t.kind === 'worker' && t.metadata.status === 'safe').length, 'safe']] as const;
     const summary = JSON.stringify(values); if (summary !== this.lastMetrics) { this.lastMetrics = summary; this.metrics.replaceChildren(); for (const [value, label] of values) { const cell = document.createElement('div'); cell.dataset.metric = label; const strong = document.createElement('strong'); strong.textContent = String(value); const span = document.createElement('span'); span.textContent = label === 'safe' ? 'of 8 people safe' : label; cell.append(strong, span); this.metrics.append(cell); } }
     const total = snapshot.totalEvents ?? snapshot.events.length; if (total !== this.lastEvents) { this.lastEvents = total; const last = snapshot.events.filter(e => !['thermal.exposure', 'service.changed'].includes(e.type)).at(-1); this.events.textContent = last ? `${last.time.toFixed(1)}s  /  ${last.type.replaceAll('.', ' · ')}  /  ${last.sourceId}` : 'Ready. Select an object to explore a disturbance.'; }
+    if(this.chain.dataset.version!==String(total)){
+      this.chain.dataset.version=String(total);this.chain.replaceChildren();
+      const heading=document.createElement('h2');heading.textContent='Live domino chain';
+      const help=document.createElement('p');help.textContent='Physical propagation between twins · latest 12 events. Orange links show recent blast/ignition paths; Connections shows service dependencies.';
+      this.chain.append(heading,button('Close chain',()=>{this.chain.hidden=true}),help);
+      const events=snapshot.events.filter(e=>['fault.asset','asset.failed','release.created','release.ignited','fire.created','explosion.created'].includes(e.type)).slice(-12);
+      if(!events.length){const empty=document.createElement('p');empty.textContent='Start a leak, then ignite nearby equipment—or trigger a blast—to observe propagation.';this.chain.append(empty)}
+      for(const event of events){const row=document.createElement('div');row.className='hl-chain-event';
+        const parent=snapshot.events.find(e=>e.id===event.causedBy);
+        const title=document.createElement('strong');title.textContent=`${event.time.toFixed(1)}s · ${event.type.replaceAll('.',' ')}`;
+        const detail=document.createElement('span');detail.textContent=`${parent&&parent.sourceId!==event.sourceId?parent.sourceId+' → ':''}${event.sourceId}${event.targetId?' → '+event.targetId:''}${event.payload.mode?' · '+event.payload.mode:''}`;
+        const id=event.targetId??event.sourceId;const focus=button('Inspect',()=>this.actions.focus(id));row.append(title,detail,focus);this.chain.append(row);
+      }
+    }
   }
 }

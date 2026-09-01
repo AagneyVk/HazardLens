@@ -28,10 +28,11 @@ export class ReleaseTwin extends BaseTwin {
   // Radius is a visual envelope only; it is not an LFL/toxic threat-zone estimate.
   const radius=.5+Math.cbrt(Math.max(0,this.massKg))*2;this.state.metadata.radiusM=radius;
   if(this.massKg<1e-6&&supplied===0){this.state.active=false;return}
-  if(!this.ignited)for(const twin of context.twins())if(twin instanceof IgnitionSourceTwin&&twin.enabled&&twin.state.active&&distance(this.state.position,twin.state.position)<=radius){
+  if(!this.ignited&&this.massKg>1e-6)for(const twin of context.twins())if(twin.state.active&&
+   ((twin instanceof IgnitionSourceTwin&&twin.enabled)||(twin.state.kind==='fire'&&Number(twin.state.metadata.intensityMw)>0)||(twin.state.kind==='explosion'&&Number(twin.state.metadata.age)<.6))&&distance(this.state.position,twin.state.position)<=radius){
    this.ignited=true;this.state.metadata.ignited=true;
-   context.emit({type:'release.ignited',sourceId:this.state.id,payload:{releaseId:this.state.id}});
-   context.emit({type:'fire.created',sourceId:this.state.id,payload:{origin:{...this.state.position},intensityMw:Math.max(.5,this.rateKgS*8)}});break;
+   context.emit({type:'release.ignited',sourceId:twin.state.id,targetId:this.state.id,payload:{releaseId:this.state.id,fuelSourceId:this.sourceId,massKg:this.massKg}});
+   break;
   }
  }
  clone():Twin{const copy=new ReleaseTwin(this.state.id,this.state.position,this.sourceId,this.rateKgS);for(const key of ['age','ignited','massKg','receivedKg','dispersedKg','burnedKg'] as const)Object.assign(copy,{[key]:this[key]});Object.assign(copy.state,structuredClone(this.state));return copy}

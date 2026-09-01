@@ -70,6 +70,11 @@ try {
   await page.waitForFunction(() => Number(document.querySelector('.hl-clock')?.textContent.replace('s', '')) > 3);
   await page.getByRole('button', { name: 'Ⅱ Pause', exact: true }).click();
   await page.screenshot({ path: 'artifacts/indoor-collapse.png' });
+  await page.getByRole('button', { name: 'Domino chain', exact: true }).click();
+  await page.getByRole('heading', { name: 'Live domino chain' }).waitFor();
+  assert.ok(await page.locator('.hl-chain-event').count() > 1);
+  await page.screenshot({ path: 'artifacts/domino-chain.png' });
+  await page.getByRole('button', { name: 'Close chain', exact: true }).click();
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await page.getByLabel('Search assets', { exact: true }).fill('P-00');
   await page.getByRole('button', { name: 'Select P-001', exact: true }).click();
