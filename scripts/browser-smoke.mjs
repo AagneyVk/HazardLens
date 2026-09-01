@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import { mkdir, readFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
+import { chromium } from 'playwright';
+
+await mkdir('artifacts', { recursive: true });
+const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--config', 'viewer/vite.config.ts', '--host', '127.0.0.1', '--port', '4173'], { stdio: 'inherit' });
+let browser;
+try {
+ let ready=false;
+ for(let i=0;i<100;i++){try{const response=await fetch('http://127.0.0.1:4173');if(response.ok){ready=true;break}}catch{}await delay(200)}
+ assert.ok(ready,'Viewer preview must start');
+ browser=await chromium.launch({headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--enable-webgl']});
+ const page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];
+ page.on('pageerror',error=>errors.push(error.message));
+ await page.goto('http://127.0.0.1:4173',{waitUntil:'networkidle'});
+ await page.getByRole('heading',{name:'HazardLens',exact:true}).waitFor();
+ await page.locator('[data-metric="assets"] strong').filter({hasText:'240'}).waitFor();
+ assert.equal(await page.locator('canvas').count(),1);
+ assert.equal(await page.getByRole('button',{name:'Inject failure',exact:true}).isEnabled(),false);
+ await page.screenshot({path:'artifacts/industrial-overview.png'});
+ await page.getByLabel('Target assets',{exact:true}).selectOption(['P-001','P-002']);
+ await page.getByLabel('Failure mode',{exact:true}).selectOption('rupture');
+ await page.getByRole('button',{name:'Inject failure',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('[data-metric="releases"] strong')?.textContent==='2');
+ await page.getByRole('button',{name:'Pause',exact:true}).click();
+ await page.getByRole('button',{name:'Show connections',exact:true}).click();
+ await page.getByRole('button',{name:'Hide connections',exact:true}).waitFor();
+ await page.getByRole('button',{name:'Compare suppression · 10s',exact:true}).click();
+ await page.getByRole('heading',{name:'Suppression comparison · 10s horizon',exact:true}).waitFor();
+ assert.equal(await page.locator('.hl-forecast table tr').count(),4);
+ await page.getByRole('button',{name:'Close',exact:true}).click();
+ const downloadPromise=page.waitForEvent('download');
+ await page.getByRole('button',{name:'Export incident JSON',exact:true}).click();
+ const download=await downloadPromise;await download.saveAs('artifacts/incident.json');
+ const report=JSON.parse(await readFile('artifacts/incident.json','utf8'));
+ assert.equal(report.schemaVersion,1);assert.equal(report.snapshot.graph.nodes.length,241);
+ assert.ok(report.snapshot.events.some(e=>e.type==='fault.asset'));
+ await page.getByRole('button',{name:'Reset facility',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('[data-metric="releases"] strong')?.textContent==='0');
+ await page.getByLabel('Search assets',{exact:true}).fill('CL-001');
+ assert.equal(await page.getByLabel('Target assets',{exact:true}).locator('option').count(),1);
+ await page.getByLabel('Target assets',{exact:true}).selectOption('CL-001');
+ await page.getByLabel('Failure mode',{exact:true}).selectOption('outage');
+ assert.equal(await page.getByLabel('Failure severity',{exact:true}).isEnabled(),false);
+ await page.getByRole('button',{name:'Inject failure',exact:true}).click();
+ await page.getByLabel('Simulation speed',{exact:true}).selectOption('10');
+ await page.waitForFunction(()=>Number(document.querySelector('[data-metric="failed"] strong')?.textContent)>=1,null,{timeout:60000});
+ await page.getByRole('button',{name:'Pause',exact:true}).click();
+ await page.screenshot({path:'artifacts/cooling-cascade.png'});
+ await page.setViewportSize({width:390,height:844});
+ await page.screenshot({path:'artifacts/mobile-controls.png'});
+ assert.ok(await page.locator('.hl-console').isVisible());
+ assert.deepEqual(errors,[],'Browser must not report uncaught errors');
+ console.log('PASS: WebGL boot, 240 assets, multiple faults, graph overlay, forecast, export, reset, search, cooling cascade, mobile controls');
+} finally {await browser?.close();server.kill('SIGTERM')}

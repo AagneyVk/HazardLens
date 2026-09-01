@@ -1,21 +1,40 @@
 name: CI
-
 on:
   push:
     branches: [main, 'feat/**']
   pull_request:
-
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
       - run: npm install
       - run: npm test
       - run: npm run demo
       - run: npm run viewer:build
-
+      - run: npm run benchmark
+      - name: Install browser
+        if: matrix.node == 22
+        run: npx playwright install --with-deps chromium
+      - name: Browser integration
+        if: matrix.node == 22
+        run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.node == 22
+        with:
+          name: verification-artifacts
+          path: |
+            artifacts/
+            package-lock.json

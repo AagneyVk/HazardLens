@@ -1,0 +1,16 @@
+import { performance } from 'node:perf_hooks';
+import { writeFileSync, mkdirSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import { generateFacility } from '../dist/src/facility/generator.js';
+import { SimulationRuntime } from '../dist/src/core/runtime.js';
+import { injectFailures } from '../dist/src/core/failures.js';
+const {twins,graph}=generateFacility();const runtime=new SimulationRuntime(twins,graph);
+injectFailures(runtime,twins.filter(t=>t.state.kind==='pipe').slice(0,20).map(t=>({twinId:t.state.id,mode:'rupture',severity:.5})));
+const start=performance.now();runtime.run(30,.05);const elapsedMs=performance.now()-start;
+const snapshot=runtime.snapshot();
+assert.equal(snapshot.twins.filter(t=>t.kind==='release').length>=20,true);
+assert.ok(snapshot.twins.every(t=>Number.isFinite(t.integrity)&&Number.isFinite(t.temperatureK)));
+assert.ok(snapshot.events.length<=20000);
+assert.ok(elapsedMs<60000,'30 simulated seconds must complete within a broad 60-second regression budget');
+const report={workload:'240 assets / 20 simultaneous pipe faults / 30 seconds / 0.05-second steps',elapsedMs,twins:snapshot.twins.length,totalEvents:snapshot.totalEvents,retainedEvents:snapshot.events.length};
+mkdirSync('artifacts',{recursive:true});writeFileSync('artifacts/benchmark.json',JSON.stringify(report,null,2));console.log(report);

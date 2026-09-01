@@ -1,64 +1,119 @@
 import { failureModes, type FailureMode, type FailureRequest } from '../../../src/core/failures.js';
 import type { WorldSnapshot } from '../../../src/core/types.js';
+import type { compareIntervention } from '../../../src/facility/report.js';
+
+interface Actions {
+ inject(requests: FailureRequest[]): void; isolate(ids: string[]): void; suppress(): number;
+ reset(): void; overview(): void; focus(id: string): void; toggle(): boolean; speed(value: number): void;
+ select(ids: string[]): void; graph(): boolean; export(): void;
+ forecast(): ReturnType<typeof compareIntervention>;
+}
+const button = (label: string, action: () => void, className = '') => {
+ const element = document.createElement('button'); element.type = 'button'; element.textContent = label;
+ element.className = `hl-button ${className}`; element.onclick = action; return element;
+};
 
 export class CommandCenter {
- readonly root=document.createElement('div');private status=document.createElement('div');private timeline=document.createElement('div');private stats=document.createElement('div');private actions=document.createElement('div');
- private assetSelect=document.createElement('select');
- private modeSelect=document.createElement('select');
- private severity=document.createElement('input');
- private feedback=document.createElement('div');
- private injectButton=document.createElement('button');
- private pauseButton=document.createElement('button');
- private latest?:WorldSnapshot;
- private assetKey='';
- constructor(actions:{inject:(requests:FailureRequest[])=>void,isolate:(ids:string[])=>void,suppress:()=>void,reset:()=>void,overview:()=>void,incident:()=>void,toggle:()=>boolean}){
-  const style=document.createElement('style');style.textContent=`*{box-sizing:border-box}html,body,#app{margin:0;width:100%;height:100%;overflow:hidden;background:#071018;font-family:Inter,ui-sans-serif,system-ui;color:#e9f4f8}button{font:inherit}.hl-glass{background:linear-gradient(145deg,rgba(8,19,27,.9),rgba(8,19,27,.68));border:1px solid rgba(136,184,204,.18);box-shadow:0 16px 50px rgba(0,0,0,.28);backdrop-filter:blur(18px)}.hl-btn{border:1px solid #365160;background:#10232d;color:#dff5ff;padding:9px 12px;border-radius:9px;cursor:pointer;letter-spacing:.03em}.hl-btn:disabled{opacity:.45;cursor:not-allowed}.hl-btn:hover{background:#183542}.hl-danger{border-color:#8c3f34;background:#3b1916}.hl-accent{color:#65d6e8}.hl-muted{color:#78909c}.hl-kpi{font-size:24px;font-weight:650}.hl-event{padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:11px}.hl-pill{display:inline-block;padding:3px 7px;border-radius:99px;background:#15313c;color:#75d8e5;font-size:10px;letter-spacing:.08em}`;document.head.appendChild(style);
-  this.root.innerHTML=`<div class="hl-glass" style="position:fixed;left:18px;top:18px;width:min(330px,calc(100vw - 36px));max-height:calc(100vh - 36px);border-radius:14px;overflow:auto;z-index:10"><div style="padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.08)"><div style="display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:18px;font-weight:700;letter-spacing:.14em">HAZARDLENS</div><div class="hl-muted" style="font-size:10px;letter-spacing:.16em;margin-top:4px">INDUSTRIAL TWIN COMMAND</div></div><span class="hl-pill">LIVE</span></div></div></div>`;
-  document.body.appendChild(this.root);const card=this.root.firstElementChild as HTMLElement;this.status.style.cssText='padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.07)';this.stats.style.cssText='display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:14px 18px';this.actions.style.cssText='display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 18px 16px';card.append(this.status,this.stats,this.actions);
-  const faultPanel=document.createElement('div');faultPanel.style.cssText='padding:0 18px 16px;display:grid;gap:8px';
-  const label=(text:string,control:HTMLElement)=>{const l=document.createElement('label');l.textContent=text;l.style.cssText='font-size:12px;display:grid;gap:5px';l.appendChild(control);faultPanel.appendChild(l)};
-  this.assetSelect.multiple=true;this.assetSelect.size=5;this.assetSelect.className='hl-btn';this.assetSelect.setAttribute('aria-label','Target assets');
-  label('Target assets · Ctrl/Cmd-click for multiple',this.assetSelect);
-  this.assetSelect.onchange=()=>this.refreshModes();
-  this.modeSelect.className='hl-btn';this.modeSelect.setAttribute('aria-label','Failure mode');label('Failure mode',this.modeSelect);
-  this.severity.type='range';this.severity.min='1';this.severity.max='100';this.severity.value='50';this.severity.setAttribute('aria-label','Failure severity');
-  const severityLabel=document.createElement('label');const severityText=document.createElement('span');
-  const updateSeverity=()=>severityText.textContent=`Severity · ${this.severity.value}%`;updateSeverity();this.severity.oninput=updateSeverity;
-  severityLabel.append(severityText,this.severity);severityLabel.style.cssText='display:grid;gap:5px;font-size:12px';faultPanel.appendChild(severityLabel);
-  this.feedback.setAttribute('role','status');this.feedback.style.cssText='font-size:11px;color:#a9d5df;min-height:16px';faultPanel.appendChild(this.feedback);card.insertBefore(faultPanel,this.actions);
-  const add=(label:string,fn:()=>void,cls='')=>{const b=document.createElement('button');b.className=`hl-btn ${cls}`;b.textContent=label;b.onclick=fn;this.actions.appendChild(b);return b};
-  this.injectButton=add('INJECT FAILURE',()=>{
-   try{
-    const ids=this.selectedIds();if(!ids.length)throw new Error('Select at least one asset');
-    actions.inject(ids.map(twinId=>({twinId,mode:this.modeSelect.value as FailureMode,severity:Number(this.severity.value)/100})));
-    this.feedback.textContent=`Queued ${ids.length} asset disturbance${ids.length===1?'':'s'}.`;this.pauseButton.textContent='PAUSE';
-   }catch(error){this.feedback.textContent=error instanceof Error?error.message:String(error)}
-  },'hl-danger');
-  add('ISOLATE PIPES',()=>{const ids=this.selectedIds().filter(id=>this.latest?.twins.find(t=>t.id===id)?.kind==='pipe');if(!ids.length){this.feedback.textContent='Select one or more pipes to isolate.';return}actions.isolate(ids);this.feedback.textContent=`Isolation queued for ${ids.length} pipe(s).`;this.pauseButton.textContent='PAUSE'});
-  add('SUPPRESS FIRES',()=>{actions.suppress();this.pauseButton.textContent='PAUSE'});
-  add('RESET WORLD',()=>{actions.reset();this.feedback.textContent='World reset.';this.pauseButton.textContent='RESUME'});
-  this.pauseButton=add('RESUME',()=>{this.pauseButton.textContent=actions.toggle()?'PAUSE':'RESUME'});
-  add('OVERVIEW',actions.overview);add('INCIDENT CAM',actions.incident);
-  this.timeline.className='hl-glass';this.timeline.style.cssText='position:fixed;right:18px;bottom:18px;width:330px;max-height:240px;overflow:hidden;border-radius:14px;padding:14px 16px;z-index:9';document.body.appendChild(this.timeline);
+ readonly root = document.createElement('aside');
+ private readonly stats = document.createElement('div');
+ private readonly clock = document.createElement('span');
+ private readonly assetSelect = document.createElement('select');
+ private readonly search = document.createElement('input');
+ private readonly modeSelect = document.createElement('select');
+ private readonly severity = document.createElement('input');
+ private readonly severityText = document.createElement('span');
+ private readonly feedback = document.createElement('div');
+ private readonly timeline = document.createElement('section');
+ private readonly forecastPanel = document.createElement('section');
+ private readonly injectButton: HTMLButtonElement;
+ private readonly pauseButton: HTMLButtonElement;
+ private readonly selected = new Set<string>();
+ private latest?: WorldSnapshot;
+ private assetKey = '';
+ private lastEventCount = -1;
+ private lastSummary = '';
+ private graphButton: HTMLButtonElement;
+
+ constructor(private readonly actions: Actions) {
+  this.root.className = 'hl-console'; this.root.setAttribute('aria-label', 'Industrial command center');
+  const header = document.createElement('header');header.className='hl-brand';
+  header.innerHTML='<span class="hl-logomark">H</span><div><h1>HazardLens</h1><p>INDUSTRIAL TWIN PLATFORM</p></div><span class="hl-badge">LAB</span>';
+  const intro=document.createElement('p');intro.className='hl-intro';intro.textContent='One facility. Connected consequences. Explore failures across the live twin network.';
+  this.stats.className='hl-stats';this.stats.setAttribute('aria-label','Facility metrics');
+  const transport=document.createElement('div');transport.className='hl-transport';
+  this.pauseButton=button('Resume',()=>{this.pauseButton.textContent=actions.toggle()?'Pause':'Resume'});
+  const speed=document.createElement('select');speed.setAttribute('aria-label','Simulation speed');
+  for(const value of [1,2,5,10])speed.add(new Option(`${value}× speed`,String(value)));
+  speed.onchange=()=>actions.speed(Number(speed.value));
+  this.clock.className='hl-clock';transport.append(this.pauseButton,speed,this.clock);
+  const heading=document.createElement('h2');heading.textContent='01 / Select assets';
+  this.search.type='search';this.search.placeholder='Search ID, asset type, or zone';this.search.setAttribute('aria-label','Search assets');
+  this.search.oninput=()=>this.renderAssets();
+  this.assetSelect.multiple=true;this.assetSelect.size=6;this.assetSelect.setAttribute('aria-label','Target assets');
+  this.assetSelect.onchange=()=>{for(const option of this.assetSelect.options){if(option.selected)this.selected.add(option.value);else this.selected.delete(option.value)}this.refreshModes();};
+  const selectionTools=document.createElement('div');selectionTools.className='hl-selection-tools';
+  selectionTools.append(button('Select visible',()=>{for(const o of this.assetSelect.options){o.selected=true;this.selected.add(o.value)}this.refreshModes()}),button('Clear',()=>{this.selected.clear();this.renderAssets();this.refreshModes()}));
+  const hint=document.createElement('p');hint.className='hl-hint';hint.textContent='Ctrl/Cmd-click selects multiple. Click a 3D asset to inspect; Shift-click adds it.';
+  const failureHeading=document.createElement('h2');failureHeading.textContent='02 / Apply disturbance';
+  const modeLabel=document.createElement('label');modeLabel.textContent='Failure mode';modeLabel.append(this.modeSelect);this.modeSelect.setAttribute('aria-label','Failure mode');
+  this.modeSelect.onchange=()=>this.updateSeverity();
+  this.severity.type='range';this.severity.min='1';this.severity.max='100';this.severity.value='50';this.severity.setAttribute('aria-label','Failure severity');this.severity.oninput=()=>this.updateSeverity();
+  const severityLabel=document.createElement('label');severityLabel.append(this.severityText,this.severity);this.updateSeverity();
+  this.feedback.className='hl-feedback';this.feedback.setAttribute('role','status');
+  this.injectButton=button('Inject failure',()=>this.execute(()=>{actions.inject([...this.selected].map(twinId=>({twinId,mode:this.modeSelect.value as FailureMode,severity:Number(this.severity.value)/100})));return `Queued disturbances for ${this.selected.size} assets.`},true),'hl-danger');
+  this.injectButton.disabled=true;
+  const interventions=document.createElement('div');interventions.className='hl-action-grid';
+  interventions.append(button('Isolate selected pipes',()=>this.execute(()=>{const ids=[...this.selected].filter(id=>this.latest?.twins.find(t=>t.id===id)?.kind==='pipe');if(!ids.length)throw new Error('Select at least one pipe.');actions.isolate(ids);return `${ids.length} pipe(s) isolated.`},true)),button('Suppress fires',()=>this.execute(()=>`${actions.suppress()} fire(s) targeted.`,true)));
+  const footer=document.createElement('div');footer.className='hl-action-grid';
+  this.graphButton=button('Show connections',()=>{this.graphButton.textContent=actions.graph()?'Hide connections':'Show connections'});
+  footer.append(button('Overview',actions.overview),this.graphButton,button('Export incident JSON',actions.export),button('Reset facility',()=>{actions.reset();this.selected.clear();this.assetKey='';this.lastEventCount=-1;this.forecastPanel.hidden=true;this.pauseButton.textContent='Resume';this.graphButton.textContent='Show connections';this.feedback.textContent='Facility restored.';}));
+  const forecast=button('Compare suppression · 10s',()=>{this.feedback.textContent='Comparing two isolated copies of the live world…';setTimeout(()=>this.execute(()=>{this.showForecast(actions.forecast());return 'Comparison ready. Live state was not changed.';}),0)});
+  const note=document.createElement('p');note.className='hl-model-note';note.textContent='Reference model · qualitative training and research. Not a validated emergency-response forecast.';
+  this.root.append(header,intro,this.stats,transport,heading,this.search,this.assetSelect,selectionTools,hint,failureHeading,modeLabel,severityLabel,this.injectButton,this.feedback,interventions,forecast,footer,note);
+  document.body.append(this.root);
+  this.timeline.className='hl-timeline';this.timeline.setAttribute('aria-label','Causal event timeline');document.body.append(this.timeline);
+  this.forecastPanel.className='hl-forecast';this.forecastPanel.hidden=true;document.body.append(this.forecastPanel);
  }
- private selectedIds(){return Array.from(this.assetSelect.selectedOptions,o=>o.value)}
+ private execute(action:()=>string,running=false){try{this.feedback.textContent=action();if(running)this.pauseButton.textContent='Pause'}catch(error){this.feedback.textContent=error instanceof Error?error.message:String(error)}}
+ private updateSeverity(){const binary=['outage','ignition'].includes(this.modeSelect.value);this.severity.disabled=binary;this.severityText.textContent=binary?'Binary action · on/off':`Severity · ${this.severity.value}%`}
+ private renderAssets(){
+  if(!this.latest)return;const query=this.search.value.toLowerCase();
+  this.assetSelect.replaceChildren(...this.latest.twins.filter(t=>failureModes[t.kind]&&t.active&&t.integrity>0&&`${t.id} ${t.kind} ${t.metadata.zone}`.toLowerCase().includes(query)).map(t=>{const o=new Option(`${t.id} · ${t.kind}`,t.id);o.selected=this.selected.has(t.id);return o}));
+ }
  private refreshModes(){
-  const ids=this.selectedIds(),previous=this.modeSelect.value;
-  const modes=ids.length?(failureModes[this.latest!.twins.find(t=>t.id===ids[0])!.kind]??[]).filter(mode=>ids.every(id=>failureModes[this.latest!.twins.find(t=>t.id===id)!.kind]?.includes(mode))):[];
-  this.modeSelect.replaceChildren(...modes.map(mode=>{const option=document.createElement('option');option.value=mode;option.textContent=mode.replaceAll('_',' ');return option}));
+  if(!this.latest)return;const ids=[...this.selected],previous=this.modeSelect.value;
+  const kinds=ids.map(id=>this.latest!.twins.find(t=>t.id===id)?.kind);
+  const modes=kinds[0]?(failureModes[kinds[0]]??[]).filter(mode=>kinds.every(kind=>kind&&failureModes[kind]?.includes(mode))):[];
+  this.modeSelect.replaceChildren(...modes.map(mode=>new Option(mode.replaceAll('_',' '),mode)));
   if(modes.includes(previous as FailureMode))this.modeSelect.value=previous;
-  this.injectButton.disabled=!modes.length;
-  this.feedback.textContent=!ids.length?'Select assets in the list or click an asset in 3D.':!modes.length?'These asset types have no shared failure mode.':`${ids.length} asset(s) selected.`;
+  this.injectButton.disabled=!modes.length;this.updateSeverity();
+  this.feedback.textContent=!ids.length?'Select one or more assets to begin.':!modes.length?'Selected assets have no common failure mode.':`${ids.length} assets selected.`;
+  this.actions.select(ids);
  }
  selectTwin(id:string,additive=false){
-  if(!Array.from(this.assetSelect.options).some(o=>o.value===id))return;
-  for(const option of this.assetSelect.options)option.selected=option.value===id||(additive&&option.selected);
-  this.refreshModes();
+  if(!this.latest?.twins.some(t=>t.id===id&&failureModes[t.kind]&&t.integrity>0&&t.active))return;
+  if(!additive)this.selected.clear();this.selected.add(id);this.renderAssets();this.refreshModes();
  }
- update(s:WorldSnapshot){
- this.latest=s;
- const assets=s.twins.filter(t=>failureModes[t.kind]&&t.active&&t.integrity>0),key=assets.map(t=>t.id).join('|');
- if(key!==this.assetKey){const selected=this.selectedIds();this.assetKey=key;this.assetSelect.replaceChildren(...assets.map(t=>{const o=document.createElement('option');o.value=t.id;o.textContent=`${t.id} · ${t.kind}`;o.selected=selected.includes(t.id);return o}));this.refreshModes()}
- const fires=s.twins.filter(t=>t.kind==='fire'&&t.active).length,releases=s.twins.filter(t=>t.kind==='release'&&t.active).length,critical=s.twins.filter(t=>t.integrity<.5&&['tank','pipe','wall'].includes(t.kind)).length;this.status.innerHTML=`<div style="display:flex;justify-content:space-between"><span class="hl-muted">FACILITY STATUS</span><b class="${fires?'':'hl-accent'}">${fires||releases||critical?'INCIDENT ACTIVE':'NOMINAL'}</b></div><div style="margin-top:7px;font-size:12px">Simulation T+ ${s.time.toFixed(1)} s · ${s.twins.length} live digital twins</div>`;this.stats.innerHTML=`<div><div class="hl-kpi">${fires}</div><div class="hl-muted" style="font-size:10px">FIRES</div></div><div><div class="hl-kpi">${releases}</div><div class="hl-muted" style="font-size:10px">PLUMES</div></div><div><div class="hl-kpi">${critical}</div><div class="hl-muted" style="font-size:10px">CRITICAL</div></div>`;const events=s.events.slice(-8).reverse();this.timeline.innerHTML=`<div style="display:flex;justify-content:space-between;margin-bottom:8px"><b>CAUSAL TIMELINE</b><span class="hl-muted">${s.events.length} EVENTS</span></div>${events.map(e=>`<div class="hl-event"><span class="hl-muted">${e.time.toFixed(1)}s</span> &nbsp; <b>${e.type}</b><br/><span class="hl-muted">${e.sourceId}${e.targetId?` → ${e.targetId}`:''}</span></div>`).join('')||'<div class="hl-muted" style="font-size:12px">Inject a fault to begin the causal replay.</div>'}`}
+ private showForecast(result:ReturnType<typeof compareIntervention>){
+  this.forecastPanel.hidden=false;this.forecastPanel.replaceChildren();
+  const title=document.createElement('h2');title.textContent='Suppression comparison · 10s horizon';
+  const table=document.createElement('table');const header=document.createElement('tr');for(const text of ['Outcome','No intervention','Suppression']){const th=document.createElement('th');th.textContent=text;header.append(th)}table.append(header);
+  for(const [label,key] of [['Failed assets','failedAssets'],['Active fires','activeFires'],['Offline equipment','offlineAssets']] as const){const row=document.createElement('tr');for(const text of [label,String(result.baseline[key]),String(result.candidate[key])]){const td=document.createElement('td');td.textContent=text;row.append(td)}table.append(row)}
+  const note=document.createElement('p');note.textContent='Same starting state and reference models. This is a comparison, not a safety recommendation.';
+  this.forecastPanel.append(title,table,note,button('Close',()=>{this.forecastPanel.hidden=true}));
+ }
+ update(snapshot:WorldSnapshot){
+  this.latest=snapshot;this.clock.textContent=`T+ ${snapshot.time.toFixed(1)}s`;
+  const assets=snapshot.twins.filter(t=>failureModes[t.kind]&&t.active&&t.integrity>0),key=assets.map(t=>t.id).join('|');
+  if(key!==this.assetKey){this.assetKey=key;const available=new Set(assets.map(t=>t.id));for(const id of this.selected)if(!available.has(id))this.selected.delete(id);this.renderAssets();this.refreshModes()}
+  const fires=snapshot.twins.filter(t=>t.kind==='fire'&&t.active).length,releases=snapshot.twins.filter(t=>t.kind==='release'&&t.active).length,failed=snapshot.twins.filter(t=>t.integrity===0).length,assetCount=snapshot.twins.filter(t=>!['fire','release','weather'].includes(t.kind)).length;
+  const summary=`${assetCount}/${fires}/${releases}/${failed}`;
+  if(summary!==this.lastSummary){this.lastSummary=summary;this.stats.replaceChildren();for(const [value,label] of [[assetCount,'ASSETS'],[fires,'FIRES'],[releases,'RELEASES'],[failed,'FAILED']]){const stat=document.createElement('div'),strong=document.createElement('strong'),caption=document.createElement('span');strong.textContent=String(value);caption.textContent=String(label);stat.dataset.metric=String(label).toLowerCase();stat.append(strong,caption);this.stats.append(stat)}}
+  const total=snapshot.totalEvents??snapshot.events.length;
+  if(total!==this.lastEventCount){this.lastEventCount=total;const title=document.createElement('h2');title.textContent=`Event trace · ${total}`;this.timeline.replaceChildren(title);
+   const significant=snapshot.events.filter(e=>e.type!=='thermal.exposure').slice(-6).reverse();
+   for(const event of significant){const row=document.createElement('div');row.className='hl-event';const name=document.createElement('strong');name.textContent=event.type;const detail=document.createElement('span');detail.textContent=`${event.time.toFixed(1)}s · ${event.sourceId}${event.targetId?` → ${event.targetId}`:''}${event.causedBy?` · caused by ${event.causedBy}`:''}`;row.append(name,detail);this.timeline.append(row)}
+   if(!significant.length){const empty=document.createElement('p');empty.textContent='Inject any fault. Follow the consequences here.';this.timeline.append(empty)}
+  }
+ }
 }
-

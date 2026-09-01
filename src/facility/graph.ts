@@ -12,7 +12,7 @@ export class FacilityTwinGraph {
   private readonly incoming = new Map<string, FacilityEdge[]>();
   private readonly outgoing = new Map<string, FacilityEdge[]>();
 
-  addNode(state: TwinState, zone: string): void {
+  addNode(state: Pick<TwinState, 'id' | 'kind' | 'position'>, zone: string): void {
     if (this.nodesById.has(state.id)) throw new Error(`Duplicate graph node: ${state.id}`);
     if (![state.position.x, state.position.y, state.position.z].every(Number.isFinite)) throw new Error('Invalid node position');
     this.nodesById.set(state.id, { id: state.id, kind: state.kind, position: { ...state.position }, zone });
@@ -42,7 +42,7 @@ export class FacilityTwinGraph {
   snapshot(): FacilityGraphSnapshot { return structuredClone({ nodes: [...this.nodesById.values()], edges: this.links }); }
   clone(): FacilityTwinGraph {
     const copy = new FacilityTwinGraph();
-    for (const node of this.nodesById.values()) copy.addNode(node as TwinState, node.zone);
+    for (const node of this.nodesById.values()) copy.addNode(node, node.zone);
     for (const edge of this.links) copy.connect(edge.from, edge.to, edge.kind);
     return copy;
   }

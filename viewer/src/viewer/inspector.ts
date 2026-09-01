@@ -1,14 +1,14 @@
 import type { TwinState } from '../../../src/core/types.js';
-
+import type { FacilityTwinGraph } from '../../../src/facility/graph.js';
 export class TwinInspector {
-  private panel=document.createElement('div');
-  constructor(){
-    this.panel.style.cssText='position:fixed;right:18px;top:18px;width:290px;color:#eef7ff;background:#071019e8;border:1px solid #263746;border-radius:14px;padding:16px;font:13px system-ui;z-index:8;display:none;backdrop-filter:blur(12px)';
-    document.body.appendChild(this.panel);
-  }
-  show(t?:TwinState){
-    if(!t){this.panel.style.display='none';return;}
-    this.panel.style.display='block';
-    this.panel.innerHTML=`<b style="font-size:18px">${t.id}</b><br/><span style="opacity:.7">${t.kind.toUpperCase()} TWIN</span><hr/><div>Integrity: ${(t.integrity*100).toFixed(1)}%</div><div>Temperature: ${t.temperatureK.toFixed(1)} K</div><div>Fidelity: F${t.fidelity}</div><br/><b>Metadata</b><pre style="white-space:pre-wrap">${JSON.stringify(t.metadata,null,2)}</pre>`;
-  }
+ private panel=document.createElement('section');private last='';
+ constructor(){this.panel.className='hl-inspector';this.panel.setAttribute('aria-label','Twin inspector');this.panel.hidden=true;document.body.append(this.panel)}
+ show(t?:TwinState,graph?:FacilityTwinGraph){
+  if(!t){this.panel.hidden=true;this.last='';return}const key=JSON.stringify(t);if(key===this.last)return;this.last=key;this.panel.hidden=false;this.panel.replaceChildren();
+  const title=document.createElement('h2');title.textContent=t.id;const subtitle=document.createElement('p');subtitle.textContent=`${t.kind.toUpperCase()} · ${t.metadata.zone??'hazard'}`;
+  const values=document.createElement('dl');for(const [label,value] of [['Integrity',`${(t.integrity*100).toFixed(1)}%`],['Temperature',`${t.temperatureK.toFixed(1)} K`],['State',String(t.metadata.status??(t.active?'active':'inactive'))],['Fidelity',`F${t.fidelity}`]]){const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;values.append(dt,dd)}
+  const dependencies=document.createElement('p');dependencies.textContent=`Depends on: ${graph?.providers(t.id).join(', ')||'none'}`;
+  const dependents=document.createElement('p');dependents.textContent=`Supplies: ${graph?.dependents(t.id).join(', ')||'none'}`;
+  this.panel.append(title,subtitle,values,dependencies,dependents);
+ }
 }
