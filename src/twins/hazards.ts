@@ -46,6 +46,7 @@ export class FireTwin extends BaseTwin {
    {physicalProfile:{material:'combustion',properties:{intensityMw,model:'radiation-reference-v2'}}});
  }
  onEvent(event:SimEvent){
+  if(event.type==='asset.failed'&&event.sourceId===this.fuelSourceId){this.stop('source-destroyed');return}
   if(event.type!=='suppression.command')return;
   const strength=Number(event.payload.strength??.5);if(!Number.isFinite(strength)||strength<0)return;
   this.intensityMw=Math.max(0,this.intensityMw-strength);this.state.metadata.intensityMw=this.intensityMw;
@@ -53,13 +54,14 @@ export class FireTwin extends BaseTwin {
  }
  tick(dt:number,context:TwinContext){
   const requested=this.intensityMw*dt/46,source=this.fuelSourceId?context.get(this.fuelSourceId):undefined;
+  if(this.fuelSourceId&&(!source||(source.state.kind!=='release'&&(!source.state.active||source.state.integrity<=0||(source instanceof PipeTwin&&source.failed))))){this.stop('source-destroyed');return}
   let consumed:number;
   if(source instanceof ReleaseTwin)consumed=source.consumeFuel(requested);
   else if(source?.withdrawFuel)consumed=source.withdrawFuel(requested);
   else{consumed=Math.min(this.standaloneFuelKg,requested);this.standaloneFuelKg-=consumed}
   this.burnedKg+=consumed;
   const effective=consumed*46/dt;this.state.metadata.intensityMw=effective;
-  if(effective<=1e-9){this.state.active=false;return}
+  if(effective<=1e-9){this.stop('fuel-unavailable');return}
   for(const twin of context.twins()){
    if(twin.state.integrity<=0||!['tank','wall','pipe','reactor','pump','compressor','cooling','control','emergency'].includes(twin.state.kind))continue;
    const indoor=twin.state.metadata.indoor===true;
@@ -68,5 +70,6 @@ export class FireTwin extends BaseTwin {
    if(flux>1)context.emit({type:'thermal.exposure',sourceId:this.state.id,targetId:twin.state.id,payload:{heatFluxKwM2:flux,durationS:dt}});
   }
  }
+ private stop(reason:string){this.state.active=false;this.intensityMw=0;this.state.metadata.intensityMw=0;this.state.metadata.stopReason=reason}
  clone():Twin{const copy=new FireTwin(this.state.id,this.state.position,this.intensityMw,this.fuelSourceId);copy.standaloneFuelKg=this.standaloneFuelKg;copy.burnedKg=this.burnedKg;Object.assign(copy.state,structuredClone(this.state));return copy}
 }

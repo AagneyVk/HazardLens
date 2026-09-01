@@ -11,6 +11,7 @@ import { createIndustrialEnvironment } from './sceneEnvironment.js';
 import { CommandCenter } from './commandCenter.js';
 import './style.css';
 import './chain.css';
+import './responses.css';
 
 function boot(){
  const app=document.getElementById('app')!;
@@ -32,6 +33,7 @@ function boot(){
  const focus=(id:string)=>{const t=sim.runtime.get(id);if(!t)return;targetLook.set(t.state.position.x,t.state.position.y+1.5,t.state.position.z);targetPosition.copy(targetLook).add(new THREE.Vector3(11,9,14));cinematic=true};
  const command=new CommandCenter({
   inject:requests=>sim.inject(requests),isolate:ids=>ids.forEach(id=>sim.isolatePipe(id)),suppress:()=>sim.suppress(),evacuate:()=>sim.evacuate(),
+  respond:(ids,mode)=>sim.respond(ids,mode),compareResponse:(ids,mode)=>sim.compareResponse(ids,mode),
   toggle:()=>sim.toggleRunning(),speed:value=>{sim.speed=value},
   reset:()=>{sim.reset();world.clear();world.setGraph(sim.runtime.graph!.snapshot());selectedId=undefined;world.setSelection([]);inspector.show();camera.position.set(40,35,43);controls.target.set(0,1,0);cinematic=false},
   overview:()=>{targetPosition.set(40,35,43);targetLook.set(0,1,0);cinematic=true},focus,

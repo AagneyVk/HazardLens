@@ -55,6 +55,14 @@ export class WorldRenderer {
       }
       object.position.set(twin.position.x, twin.position.y, twin.position.z);
       object.visible = twin.active || !['fire', 'explosion', 'release'].includes(twin.kind);
+      if(twin.kind==='pipe'){const broken=twin.integrity<.9;object.getObjectByName('intactPipe')!.visible=!broken;object.getObjectByName('brokenPipe')!.visible=broken}
+      if(['pump','compressor','cooling','control','emergency'].includes(twin.kind)){const damage=1-twin.integrity;object.rotation.z=damage*.22;object.scale.y=1-damage*.25}
+      let spray=object.getObjectByName('coolingSpray') as THREE.Points|undefined;
+      if(Number(twin.metadata.coolingRemainingS)>0){
+        if(!spray){spray=new THREE.Points(new THREE.BufferGeometry(),new THREE.PointsMaterial({color:0xa7e2fa,size:.09,transparent:true,opacity:.65}));spray.name='coolingSpray';spray.geometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(180),3));object.add(spray)}
+        spray.visible=true;const positions=spray.geometry.attributes.position as THREE.BufferAttribute;
+        for(let i=0;i<60;i++){const age=(snapshot.time*.8+i/60)%1,a=i*2.399;positions.setXYZ(i,Math.sin(a)*(2-age),4*(1-age),Math.cos(a)*(2-age))}positions.needsUpdate=true;
+      }else if(spray)spray.visible=false;
       if (twin.kind === 'fire') {
         // Render at the vessel surface; do not move the model's radiation origin.
         const source = snapshot.twins.find(t => t.id === twin.metadata.fuelSourceId);

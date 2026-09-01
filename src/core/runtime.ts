@@ -3,6 +3,7 @@ import type { SimEvent, Twin, TwinContext, WorldSnapshot, Vec3 } from './types.j
 import { FireTwin, ReleaseTwin } from '../twins/hazards.js';
 import { ExplosionTwin } from '../twins/indoor.js';
 import {FloorGasTwin} from '../twins/floorGas.js';
+import {applyResponse,type ResponseMode} from './responses.js';
 
 export interface SnapshotOptions { eventLimit?: number; includeGraph?: boolean; significantOnly?: boolean; }
 export class SimulationRuntime {
@@ -27,7 +28,11 @@ export class SimulationRuntime {
     if (!Number.isFinite(dt) || dt <= 0 || !Number.isFinite(this.time + dt)) throw new Error('dt must be finite and positive');
     this.drainEvents();
     const context = this.context();
-    for (const twin of [...this.registry.values()]) if (twin.state.active) twin.tick(dt, context);
+    for (const twin of [...this.registry.values()]) if (twin.state.active){
+      const cooling=Math.max(0,Number(twin.state.metadata.coolingRemainingS??0));
+      if(cooling>0){twin.state.temperatureK=Math.max(303,twin.state.temperatureK-5*Math.min(dt,cooling));twin.state.metadata.coolingRemainingS=Math.max(0,cooling-dt)}
+      twin.tick(dt, context);
+    }
     this.time += dt;
     this.drainEvents();
   }
@@ -61,6 +66,7 @@ export class SimulationRuntime {
       twins: () => [...this.registry.values()], emit: event => this.emit({...event,causedBy:event.causedBy??causedBy}) };
   }
   private materialize(event: SimEvent): void {
+    if(event.type==='response.command'){applyResponse(this,event.targetId??'',event.payload.mode as ResponseMode,event.id);return}
     if(event.type==='release.ignited'){
       const release=this.get(String(event.payload.releaseId));
       if(!(release instanceof ReleaseTwin))return;
@@ -96,6 +102,8 @@ export class SimulationRuntime {
     } else {
       const intensity = Number(event.payload.intensityMw);
       if (!Number.isFinite(intensity) || intensity <= 0) throw new Error('Invalid fire intensity');
+      const existing=[...this.registry.values()].find(t=>t instanceof FireTwin&&t.state.active&&t.fuelSourceId===event.sourceId);
+      if(existing)return;
       this.add(new FireTwin(id, origin, intensity, event.sourceId));
     }
   }

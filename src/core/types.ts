@@ -47,7 +47,7 @@ export interface TwinMetadata {
   history?: TwinHistoryEntry[];
 }
 
-export type EventType = "explosion.created"|"evacuation.command"|"worker.safe"|"service.changed"|"fault.asset"|"fault.pipe_leak"|"release.created"|"release.updated"|"release.ignited"|"fire.created"|"thermal.exposure"|"asset.failed"|"valve.command"|"suppression.command";
+export type EventType = "response.command"|"response.applied"|"response.rejected"|"explosion.created"|"evacuation.command"|"worker.safe"|"service.changed"|"fault.asset"|"fault.pipe_leak"|"release.created"|"release.updated"|"release.ignited"|"fire.created"|"thermal.exposure"|"asset.failed"|"valve.command"|"suppression.command";
 
 export interface SimEvent<T extends Record<string,unknown> = Record<string,unknown>> {
   id:string;

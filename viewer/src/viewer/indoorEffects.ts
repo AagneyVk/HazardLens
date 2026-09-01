@@ -51,16 +51,24 @@ export class BlastEffect {
   }
 }
 
-/** Two instanced draw calls cover the entire spatial field, including every burning cell. */
+function fieldMaterial(smoke:boolean){return new THREE.ShaderMaterial({uniforms:{time:{value:0}},transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:smoke?THREE.NormalBlending:THREE.AdditiveBlending,
+ vertexShader:`varying vec2 vUv; varying float seed; void main(){vUv=uv;seed=instanceMatrix[3].x*.37+instanceMatrix[3].z*.71;gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.);}`,
+ fragmentShader:`uniform float time;varying vec2 vUv;varying float seed;
+ float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+ float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
+ void main(){vec2 uv=vUv;float n=noise(uv*5.+vec2(seed,-time*${smoke?'0.5':'2.4'}));n+=.5*noise(uv*11.+vec2(-seed,-time*3.));
+ ${smoke?'float edge=1.-smoothstep(.2,.52,length(uv-.5));float alpha=edge*smoothstep(.2,1.2,n)*.17;vec3 color=vec3(.48,.73,.76);':'float sway=sin(uv.y*7.-time*4.+seed)*.08*uv.y;float width=(1.-uv.y)*.45;float edge=1.-smoothstep(width*.3,width+.03,abs(uv.x-.5+sway));float alpha=edge*smoothstep(.12,.65,n-uv.y*.45)*(1.-smoothstep(.72,1.,uv.y));vec3 color=mix(vec3(1.,.13,.015),vec3(1.,.85,.24),clamp((1.-uv.y)*n,0.,1.));'}
+ gl_FragColor=vec4(color,alpha);}`})}
+/** Layered instanced wisps and crossed turbulent flames; every visible cell follows state. */
 export class FloorGasEffect{
  readonly root=new THREE.Group();
- private gas=new THREE.InstancedMesh(new THREE.PlaneGeometry(1.95,1.95),new THREE.MeshBasicMaterial({color:0x71c6ca,transparent:true,opacity:.17,depthWrite:false,side:THREE.DoubleSide}),513);
- private map=spriteTexture(false);
- private flame=new THREE.InstancedMesh(new THREE.PlaneGeometry(2,3),new THREE.MeshBasicMaterial({map:this.map,transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}),1026);
+ private gas=new THREE.InstancedMesh(new THREE.PlaneGeometry(2.3,2.3),fieldMaterial(true),1539);
+ private flame=new THREE.InstancedMesh(new THREE.PlaneGeometry(2,3),fieldMaterial(false),1026);
  constructor(){this.gas.frustumCulled=this.flame.frustumCulled=false;this.root.add(this.gas,this.flame)}
  update(twin:TwinState,time:number){const pose=new THREE.Object3D();let gasCount=0,fireCount=0;
+  this.gas.material.uniforms.time.value=this.flame.material.uniforms.time.value=time;
   for(const cell of twin.gasCells??[]){if(cell.volumeFraction<.001&&!cell.burning)continue;
-   pose.position.set(cell.x,.04,cell.z);pose.rotation.set(-Math.PI/2,0,0);pose.scale.setScalar(1);pose.updateMatrix();this.gas.setMatrixAt(gasCount,pose.matrix);this.gas.setColorAt(gasCount++,new THREE.Color(cell.volumeFraction>.095?0xc28d53:cell.volumeFraction>=.021?0xe2c05c:0x71c6ca));
+   for(let layer=0;layer<3;layer++){pose.position.set(cell.x+Math.sin(time*.6+cell.index+layer)*.1,.08+layer*.17,cell.z+Math.cos(time*.4+cell.index)*.1);pose.rotation.set(-Math.PI/2,0,layer*.8);pose.scale.setScalar(.85+layer*.07);pose.updateMatrix();this.gas.setMatrixAt(gasCount++,pose.matrix)}
    if(cell.burning){const height=.5+Math.min(2,cell.massKg*5),flicker=1+.13*Math.sin(time*13+cell.index);for(let side=0;side<2;side++){pose.position.set(cell.x,height*.75,cell.z);pose.rotation.set(0,side*Math.PI/2,0);pose.scale.set(1,height*.5*flicker,1);pose.updateMatrix();this.flame.setMatrixAt(fireCount++,pose.matrix)}}
   }this.gas.count=gasCount;this.flame.count=fireCount;this.gas.instanceMatrix.needsUpdate=this.flame.instanceMatrix.needsUpdate=true;if(this.gas.instanceColor)this.gas.instanceColor.needsUpdate=true;
  }

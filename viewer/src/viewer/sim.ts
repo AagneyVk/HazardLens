@@ -3,6 +3,7 @@ import { SimulationRuntime } from '../../../src/core/runtime.js';
 import type { WorldSnapshot } from '../../../src/core/types.js';
 import { generateIndoorFacility } from '../../../src/facility/indoor.js';
 import { compareIntervention, exportIncident } from '../../../src/facility/report.js';
+import {queueResponses,type ResponseMode} from '../../../src/core/responses.js';
 
 export class ViewerSimulation {
   runtime: SimulationRuntime;
@@ -33,6 +34,8 @@ export class ViewerSimulation {
     return count;
   }
   suppress() { const count = this.applySuppression(this.runtime); this.running = true; return count; }
+  respond(ids:string[],mode:ResponseMode){queueResponses(this.runtime,ids,mode);this.running=true}
+  compareResponse(ids:string[],mode:ResponseMode){return compareIntervention(this.runtime,branch=>queueResponses(branch,ids,mode),10)}
   isolatePipe(id = 'P-017') {
     if (this.runtime.get(id)?.state.kind !== 'pipe') throw new Error('Isolation requires a pipe twin');
     this.runtime.emit({ type: 'valve.command', sourceId: 'operator', payload: { pipeId: id, closed: true } });

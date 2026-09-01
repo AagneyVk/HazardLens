@@ -30,7 +30,9 @@ export function indoorAsset(t: TwinState): THREE.Group {
     cylinder(group, .15, .8, [0, height + 1, 0], dark);
     const plate = label(t.id); plate.position.set(0, 1.8, radius + .1); plate.scale.set(1.4, .35, 1); group.add(plate);
   } else if (t.kind === 'pipe') {
-    const pipe = cylinder(group, .18, 3.6, [0, .1, 0], steel); pipe.rotation.x = Math.PI / 2;
+    const pipe = cylinder(group, .18, 3.6, [0, .1, 0], steel); pipe.rotation.x = Math.PI / 2;pipe.name='intactPipe';
+    const broken=new THREE.Group();broken.name='brokenPipe';broken.visible=false;
+    for(const side of [-1,1]){const piece=new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,1.5,20,1,true),steel);piece.position.set(side*.13,side<0?-.08:.2,side*1.05);piece.rotation.set(Math.PI/2+side*.18,0,side*.12);piece.castShadow=true;broken.add(piece)}group.add(broken);
     for (const z of [-1.5, 1.5]) { const flange = cylinder(group, .3, .15, [0, .1, z], dark); flange.rotation.x = Math.PI / 2; }
     const valve = new THREE.Mesh(new THREE.TorusGeometry(.34, .055, 8, 20), orange); valve.rotation.x = Math.PI / 2; valve.position.y = .7; group.add(valve);
     box(group, [.12, .6, .12], [0, .4, 0], dark);

@@ -28,6 +28,7 @@ try {
     assert.equal(await page.locator('canvas').count(), 1);
   }
   page.on('pageerror', e => errors.push(e.message));
+  page.on('console',message=>{if(message.type()==='error'&&/shader|WebGLProgram|VALIDATE_STATUS/i.test(message.text()))errors.push(message.text())});
   await page.goto('http://127.0.0.1:4173', { waitUntil: 'networkidle' });
   await page.getByRole('heading', { name: 'HazardLens', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Select T-001', exact: true }).waitFor();
@@ -117,6 +118,19 @@ try {
   const spatial=JSON.parse(await readFile('artifacts/spatial-incident.json','utf8'));
   assert.ok(spatial.snapshot.twins.some(t => t.gasCells?.some(c=>c.burning)), 'Flames must come from local fuel cells');
   assert.ok(spatial.snapshot.events.some(e=>e.type==='release.ignited'&&e.payload.mechanism==='floor-flame-front'));
+  await page.getByRole('button', { name: 'Cool vessel · 30s', exact: true }).click();
+  await page.getByRole('button', { name: 'Preview selected response', exact: true }).click();
+  await page.getByRole('heading', { name: 'Response comparison · 10 seconds', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Close comparison', exact: true }).click();
+  await page.getByRole('button', { name: 'Select P-001', exact: true }).click();
+  await page.getByRole('button', { name: 'Isolate fuel', exact: true }).click();
+  await page.getByRole('button', { name: 'Suppress this source', exact: true }).click();
+  await page.getByRole('button', { name: 'Ⅱ Pause', exact: true }).click();
+  await page.screenshot({ path: 'artifacts/targeted-response.png' });
+  const responseDownload=page.waitForEvent('download');await page.getByRole('button', { name: 'Export', exact: true }).click();await (await responseDownload).saveAs('artifacts/response-incident.json');
+  const response=JSON.parse(await readFile('artifacts/response-incident.json','utf8'));
+  assert.equal(response.snapshot.twins.find(t=>t.id==='P-001').metadata.isolated,true);
+  assert.ok(response.snapshot.events.some(e=>e.type==='response.applied'&&e.payload.mode==='cool'));
   assert.deepEqual(errors, [], 'Browser must not report uncaught errors');
   console.log('PASS: indoor WebGL, contextual actions, fire, blast, collapsed walls, evacuation, pause, forecast, export, multi-selection, isolation and mobile controls');
 } finally { await browser?.close(); server.kill('SIGTERM'); }

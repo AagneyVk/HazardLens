@@ -10,6 +10,8 @@ export function summarize(snapshot: WorldSnapshot) {
     offlineAssets: snapshot.twins.filter(t => t.metadata.operating === false).length,
     activeFires: snapshot.twins.filter(t => t.active&&(t.kind === 'fire'||Number(t.metadata.burningCells)>0)).length,
     burningFloorCells: snapshot.twins.reduce((sum,t)=>sum+Number(t.metadata.burningCells??0),0),
+    peakEquipmentTemperatureK:Math.max(303,...snapshot.twins.filter(t=>['tank','reactor','pipe','pump','compressor','cooling'].includes(t.kind)).map(t=>t.temperatureK)),
+    storedGasKg:snapshot.twins.filter(t=>t.kind==='release').reduce((sum,t)=>sum+Number(t.metadata.massKg??0),0),
     activeReleases: snapshot.twins.filter(t => t.kind === 'release' && t.active).length,
     totalEvents: snapshot.totalEvents ?? snapshot.events.length,
   };

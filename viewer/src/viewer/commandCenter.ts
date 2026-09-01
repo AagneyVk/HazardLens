@@ -1,8 +1,10 @@
 import { failureModes, type FailureMode, type FailureRequest } from '../../../src/core/failures.js';
 import type { WorldSnapshot } from '../../../src/core/types.js';
 import type { compareIntervention } from '../../../src/facility/report.js';
+import {responseModes,type ResponseMode} from '../../../src/core/responses.js';
 
 interface Actions {
+  respond(ids:string[],mode:ResponseMode):void;compareResponse(ids:string[],mode:ResponseMode):ReturnType<typeof compareIntervention>;
   inject(requests: FailureRequest[]): void; isolate(ids: string[]): void; suppress(): number; evacuate(): void;
   reset(): void; overview(): void; focus(id: string): void; toggle(): boolean; speed(value: number): void;
   select(ids: string[]): void; graph(): boolean; export(): void; forecast(): ReturnType<typeof compareIntervention>;
@@ -29,6 +31,8 @@ export class CommandCenter {
   private metrics = document.createElement('div'); private events = document.createElement('div'); private forecastPanel = document.createElement('section');
   private lastAssets = ''; private lastMetrics = ''; private lastEvents = -1;
   private chain=document.createElement('section');
+  private responsePanel=document.createElement('section');
+  private responseMode:ResponseMode='isolate';
   constructor(private actions: Actions) {
     const header = document.createElement('header'); header.className = 'hl-topbar';
     header.innerHTML = '<div class="hl-brand"><span class="hl-mark">H</span><div><h1>HazardLens</h1><span>INDOOR RESPONSE LAB</span></div></div><div class="hl-location"><i></i> Factory hall <span>/</span> Cutaway view</div>';
@@ -60,7 +64,8 @@ export class CommandCenter {
     }, true), 'hl-primary');
     this.feedback.className = 'hl-feedback'; this.feedback.setAttribute('role', 'status');
     const help = document.createElement('p'); help.className = 'hl-helper'; help.textContent = 'Shift-click to select multiple objects. Effects follow simulation time.';
-    this.editor.append(kicker, this.target, focus, this.modeGrid, severityWrap, this.apply, this.feedback, help); document.body.append(this.editor);
+    this.responsePanel.className='hl-responses';
+    this.editor.append(kicker, this.target, focus, this.modeGrid, severityWrap, this.apply, this.feedback, help,this.responsePanel); document.body.append(this.editor);
     this.metrics.className = 'hl-metrics'; this.metrics.setAttribute('aria-label', 'Live simulation metrics'); document.body.append(this.metrics);
     const transport = document.createElement('section'); transport.className = 'hl-transport';
     this.pause = button('▶ Run', () => { this.pause.textContent = actions.toggle() ? 'Ⅱ Pause' : '▶ Run'; }, 'hl-play');
@@ -68,7 +73,7 @@ export class CommandCenter {
     this.clock.className = 'hl-clock';
     transport.append(this.pause, speed, this.clock, button('Evacuate', () => this.execute(() => { actions.evacuate(); return 'Evacuation alarm activated.'; }, true)), button('Suppress', () => this.execute(() => `${actions.suppress()} fire(s) targeted.`, true)), button('Isolate', () => this.execute(() => { const ids = [...this.selected].filter(id => this.latest?.twins.find(t => t.id === id)?.kind === 'pipe'); if (!ids.length) throw new Error('Select a pipe first.'); actions.isolate(ids); return 'Selected lines isolated.'; }, true)), button('Compare response', () => { this.execute(() => { this.showForecast(actions.forecast()); return 'Comparison ready.'; }); }));
     document.body.append(transport); this.events.className = 'hl-event-strip'; this.events.setAttribute('aria-label', 'Recent events'); document.body.append(this.events);
-    const notice = document.createElement('div'); notice.className = 'hl-model-note'; notice.textContent = 'GAS OVERLAY: CYAN = LEAN · YELLOW = FLAMMABLE · AMBER = RICH · REFERENCE MODEL'; document.body.append(notice);
+    const notice = document.createElement('div'); notice.className = 'hl-model-note'; notice.textContent = 'CYAN WISPS = GAS VISUALIZATION · RESPONSES ARE SIMULATED, NOT EMERGENCY GUIDANCE'; document.body.append(notice);
     this.forecastPanel.className = 'hl-forecast'; this.forecastPanel.hidden = true; document.body.append(this.forecastPanel);
     document.addEventListener('keydown', e => { if ((e.target as HTMLElement).matches('input,select,textarea,button')) return; if (e.code === 'Space') { e.preventDefault(); this.pause.click(); } if (e.key === 'Escape') { this.selected.clear(); this.refreshSelection(); } });
   }
@@ -87,6 +92,14 @@ export class CommandCenter {
   private refreshSelection() {
     this.renderAssets(); this.actions.select([...this.selected]); this.editor.hidden = !this.selected.size;
     const twins = [...this.selected].map(id => this.latest!.twins.find(t => t.id === id)!);
+    this.responsePanel.replaceChildren();const heading=document.createElement('h2');heading.textContent='Contain the incident';this.responsePanel.append(heading);
+    const responseLabels:Record<ResponseMode,string>={isolate:'Isolate fuel',cool:'Cool vessel · 30s',suppress:'Suppress this source',shutdown:'Shut down equipment',restore:'Restore service'};
+    const shared=twins.length?(responseModes[twins[0].kind]??[]).filter(mode=>twins.every(t=>responseModes[t.kind]?.includes(mode))):[];
+    if(!shared.includes(this.responseMode))this.responseMode=shared[0]??'isolate';
+    if(shared.length){const choice=document.createElement('select');choice.setAttribute('aria-label','Response to preview');for(const mode of shared)choice.add(new Option(responseLabels[mode],mode,false,mode===this.responseMode));choice.onchange=()=>{this.responseMode=choice.value as ResponseMode;this.refreshSelection()};this.responsePanel.append(choice)}
+    for(const mode of shared)this.responsePanel.append(button(responseLabels[mode],()=>{this.responseMode=mode;this.refreshSelection();this.execute(()=>{this.actions.respond([...this.selected],mode);return `${responseLabels[mode]} requested. Check the domino log for its outcome.`},true)}));
+    if(shared.length)this.responsePanel.append(button('Preview selected response',()=>this.execute(()=>{this.showForecast(this.actions.compareResponse([...this.selected],this.responseMode));return 'Cloned-world comparison; live incident unchanged.'})));
+    const note=document.createElement('p');note.textContent=`Preview: ${responseLabels[this.responseMode]}. Responses limit escalation; they do not rebuild destroyed assets. Simulation controls—not real emergency instructions.`;this.responsePanel.append(note);
     this.target.textContent = twins.length === 1 ? String(twins[0].metadata.label ?? twins[0].id) : `${twins.length} objects`;
     const available = twins.length && twins.every(t => t.active && t.integrity > 0) ? (failureModes[twins[0].kind] ?? []).filter(mode => twins.every(t => failureModes[t.kind]?.includes(mode))) : [];
     if (!this.mode || !available.includes(this.mode)) this.mode = available[0]; this.modeGrid.replaceChildren();
@@ -95,7 +108,8 @@ export class CommandCenter {
   }
   private showForecast(result: ReturnType<typeof compareIntervention>) {
     this.forecastPanel.hidden = false; this.forecastPanel.replaceChildren(); const h = document.createElement('h2'); h.textContent = 'Response comparison · 10 seconds'; const text = document.createElement('p'); text.textContent = `Active fires: ${result.baseline.activeFires} without response → ${result.candidate.activeFires} with suppression. Failed assets: ${result.baseline.failedAssets} → ${result.candidate.failedAssets}.`;
-    const note = document.createElement('p'); note.textContent = 'Two cloned worlds. Same initial conditions. Reference-model results, not a safety recommendation.'; this.forecastPanel.append(h, text, note, button('Close comparison', () => { this.forecastPanel.hidden = true; }));
+    const detail=document.createElement('p');detail.textContent=`Peak equipment temperature: ${result.baseline.peakEquipmentTemperatureK.toFixed(1)} K → ${result.candidate.peakEquipmentTemperatureK.toFixed(1)} K. Gas remaining: ${result.baseline.storedGasKg.toFixed(2)} kg → ${result.candidate.storedGasKg.toFixed(2)} kg.`;
+    const note = document.createElement('p'); note.textContent = 'Two cloned worlds. Same initial conditions. Reference-model results, not a safety recommendation.'; this.forecastPanel.append(h, text, detail,note, button('Close comparison', () => { this.forecastPanel.hidden = true; }));
   }
   update(snapshot: WorldSnapshot) {
     this.latest = snapshot; this.clock.textContent = `${snapshot.time.toFixed(1).padStart(5, '0')} s`;
@@ -110,7 +124,7 @@ export class CommandCenter {
       const heading=document.createElement('h2');heading.textContent='Live domino chain';
       const help=document.createElement('p');help.textContent='Physical propagation between twins · latest 12 events. Orange links show recent blast/ignition paths; Connections shows service dependencies.';
       this.chain.append(heading,button('Close chain',()=>{this.chain.hidden=true}),help);
-      const events=snapshot.events.filter(e=>['fault.asset','asset.failed','release.created','release.ignited','fire.created','explosion.created'].includes(e.type)).slice(-12);
+      const events=snapshot.events.filter(e=>['response.applied','response.rejected','fault.asset','asset.failed','release.created','release.ignited','fire.created','explosion.created'].includes(e.type)).slice(-12);
       if(!events.length){const empty=document.createElement('p');empty.textContent='Start a leak, then ignite nearby equipment—or trigger a blast—to observe propagation.';this.chain.append(empty)}
       for(const event of events){const row=document.createElement('div');row.className='hl-chain-event';
         const parent=snapshot.events.find(e=>e.id===event.causedBy);
