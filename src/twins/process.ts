@@ -1,5 +1,13 @@
-import { SimEvent, Twin, TwinContext, TwinState } from "../core/types.js";
+import type { SimEvent, Twin, TwinContext, TwinState } from "../core/types.js";
 import { BaseTwin } from "./base.js";
+
+function applyOperatorFault(twin: BaseTwin, event: SimEvent, context: TwinContext): boolean {
+ if(event.type!=="fault.asset"||event.targetId!==twin.state.id)return false;
+ const severity=Number(event.payload.severity);
+ if(!Number.isFinite(severity)||severity<=0||severity>1)return true;
+ if(event.payload.mode==="overheat")context.emit({type:"thermal.exposure",sourceId:twin.state.id,targetId:twin.state.id,causedBy:event.id,payload:{heatFluxKwM2:1000*severity}});
+ return true;
+}
 
 const cloneState=(s:TwinState):TwinState=>structuredClone(s);
 
@@ -22,18 +30,22 @@ export class PipeTwin extends BaseTwin {
  }
  onEvent(event:SimEvent,context:TwinContext):void{
   this.record(event,`processed ${event.type}`);
+  if(applyOperatorFault(this,event,context)){
+   if(event.payload.mode==="rupture"&&this.state.active)this.release(context,2.5*Number(event.payload.severity),event.id);
+   return;
+  }
   if(event.type==="fault.pipe_leak"&&event.targetId===this.state.id)this.release(context,Number(event.payload.rateKgS??.3));
   if(event.type==="thermal.exposure"&&event.targetId===this.state.id){const flux=Number(event.payload.heatFluxKwM2??0);this.state.temperatureK+=flux*.025;this.state.integrity=Math.max(0,this.state.integrity-flux*.00045);if(!this.failed&&(this.state.integrity<=.55||this.state.temperatureK>=390)){this.failed=true;context.emit({type:"asset.failed",sourceId:this.state.id,payload:{kind:"pipe",mode:"thermal-rupture"}});this.release(context,Math.max(.8,this.leakRateKgS*2.5));}}
   if(event.type==="valve.command"&&event.payload.pipeId===this.state.id)this.leakRateKgS*=.08;
  }
- private release(context:TwinContext,rate:number){this.leakRateKgS=Math.max(this.leakRateKgS,rate);this.state.integrity=Math.max(0,this.state.integrity-.15);context.emit({type:"release.created",sourceId:this.state.id,payload:{chemical:this.chemical,rateKgS:this.leakRateKgS,origin:{...this.state.position}}});}
+ private release(context:TwinContext,rate:number,causedBy?:string){if(!Number.isFinite(rate)||rate<=0)return;this.leakRateKgS=Math.max(this.leakRateKgS,rate);this.state.integrity=Math.max(0,this.state.integrity-.15);context.emit({type:"release.created",sourceId:this.state.id,causedBy,payload:{chemical:this.chemical,rateKgS:this.leakRateKgS,origin:{...this.state.position}}});}
  tick():void{}
  clone():Twin{const c=new PipeTwin(this.state.id,{...this.state.position},this.chemical);c.leakRateKgS=this.leakRateKgS;c.failed=this.failed;Object.assign(c.state,cloneState(this.state));return c}
 }
 
 export class IgnitionSourceTwin extends BaseTwin {
  constructor(id:string,position:TwinState["position"],public enabled=true){super({id,kind:"ignition",position,fidelity:1,active:true,integrity:1,temperatureK:650,metadata:{enabled}},physical("ignition-source",{enabled}));}
- onEvent():void{} tick():void{}
+ onEvent(event:SimEvent):void{if(event.type==="fault.asset"&&event.targetId===this.state.id&&event.payload.mode==="ignition"){this.enabled=true;this.state.metadata.enabled=true;this.record(event,"ignition source enabled");}} tick():void{}
  clone():Twin{const c=new IgnitionSourceTwin(this.state.id,{...this.state.position},this.enabled);Object.assign(c.state,cloneState(this.state));return c}
 }
 
@@ -42,14 +54,37 @@ export class TankTwin extends BaseTwin {
  constructor(id:string,position:TwinState["position"],public chemical="propane"){
   super({id,kind:"tank",position,fidelity:1,active:true,integrity:1,temperatureK:303,metadata:{chemical,failureRisk:0}},physical("steel",{chemical,capacity:5000}));
  }
- onEvent(event:SimEvent,context:TwinContext):void{if(event.type!=="thermal.exposure"||event.targetId!==this.state.id||this.failed)return;this.record(event,"thermal exposure received");const flux=Number(event.payload.heatFluxKwM2??0);this.heatDose+=flux;this.state.temperatureK+=flux*.018;this.state.integrity=Math.max(0,this.state.integrity-flux*.00008);this.state.metadata.failureRisk=Math.min(.99,this.heatDose/16000);if(this.heatDose>=900||this.state.temperatureK>=520||this.state.integrity<=.65){this.failed=true;this.state.active=false;this.state.integrity=0;context.emit({type:"asset.failed",sourceId:this.state.id,payload:{kind:"tank",mode:"thermal-rupture",heatDose:this.heatDose}});context.emit({type:"release.created",sourceId:this.state.id,payload:{chemical:this.chemical,rateKgS:2.4,origin:{...this.state.position}}});context.emit({type:"fire.created",sourceId:this.state.id,payload:{origin:{...this.state.position},intensityMw:7}})}}
+ onEvent(event:SimEvent,context:TwinContext):void{
+ if(this.failed)return;
+ if(applyOperatorFault(this,event,context)){
+  this.record(event,"operator disturbance");
+  if(event.payload.mode==="rupture"){
+   this.failed=true;this.state.active=false;this.state.integrity=0;
+   context.emit({type:"asset.failed",sourceId:this.state.id,causedBy:event.id,payload:{kind:"tank",mode:"rupture"}});
+   context.emit({type:"release.created",sourceId:this.state.id,causedBy:event.id,payload:{chemical:this.chemical,rateKgS:2.4*Number(event.payload.severity),origin:{...this.state.position}}});
+  }
+  return;
+ }
+ if(event.type!=="thermal.exposure"||event.targetId!==this.state.id||this.failed)return;this.record(event,"thermal exposure received");const flux=Number(event.payload.heatFluxKwM2??0);this.heatDose+=flux;this.state.temperatureK+=flux*.018;this.state.integrity=Math.max(0,this.state.integrity-flux*.00008);this.state.metadata.failureRisk=Math.min(.99,this.heatDose/16000);if(this.heatDose>=900||this.state.temperatureK>=520||this.state.integrity<=.65){this.failed=true;this.state.active=false;this.state.integrity=0;context.emit({type:"asset.failed",sourceId:this.state.id,payload:{kind:"tank",mode:"thermal-rupture",heatDose:this.heatDose}});context.emit({type:"release.created",sourceId:this.state.id,payload:{chemical:this.chemical,rateKgS:2.4,origin:{...this.state.position}}});context.emit({type:"fire.created",sourceId:this.state.id,payload:{origin:{...this.state.position},intensityMw:7}})}}
  tick():void{}
  clone():Twin{const c=new TankTwin(this.state.id,{...this.state.position},this.chemical);c.heatDose=this.heatDose;c.failed=this.failed;Object.assign(c.state,cloneState(this.state));return c}
 }
 
 export class WallTwin extends BaseTwin {
  constructor(id:string,position:TwinState["position"]){super({id,kind:"wall",position,fidelity:0,active:true,integrity:1,temperatureK:303,metadata:{damageState:"normal"}},physical("concrete",{}));}
- onEvent(event:SimEvent):void{if(event.type!=="thermal.exposure"||event.targetId!==this.state.id)return;this.record(event,"wall thermal exposure");const flux=Number(event.payload.heatFluxKwM2??0);this.state.temperatureK+=flux*.01;this.state.integrity=Math.max(0,this.state.integrity-flux*.00004);this.state.metadata.damageState=this.state.integrity<.55?"severe":this.state.integrity<.8?"damaged":"normal"}
+ onEvent(event:SimEvent,context:TwinContext):void{
+ if(applyOperatorFault(this,event,context)){
+  this.record(event,"operator disturbance");
+  if(event.payload.mode==="structural_damage"){
+   const previous=this.state.integrity;
+   this.state.integrity=Math.max(0,previous-Number(event.payload.severity));
+   this.state.metadata.damageState=this.state.integrity===0?"destroyed":this.state.integrity<.55?"severe":"damaged";
+   if(previous>0&&this.state.integrity===0)context.emit({type:"asset.failed",sourceId:this.state.id,causedBy:event.id,payload:{kind:"wall",mode:"structural_damage"}});
+  }
+  return;
+ }
+ if(event.type!=="thermal.exposure"||event.targetId!==this.state.id)return;this.record(event,"wall thermal exposure");const flux=Number(event.payload.heatFluxKwM2??0);this.state.temperatureK+=flux*.01;this.state.integrity=Math.max(0,this.state.integrity-flux*.00004);this.state.metadata.damageState=this.state.integrity<.55?"severe":this.state.integrity<.8?"damaged":"normal"}
  tick():void{}
  clone():Twin{const c=new WallTwin(this.state.id,{...this.state.position});Object.assign(c.state,cloneState(this.state));return c}
 }
+

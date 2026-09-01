@@ -1,4 +1,4 @@
-import { SimEvent, Twin, TwinContext, Vec3 } from "../core/types.js";
+import type { SimEvent, Twin, TwinContext, Vec3 } from "../core/types.js";
 import { BaseTwin } from "./base.js";
 import { IgnitionSourceTwin, WeatherTwin } from "./process.js";
 
@@ -20,3 +20,4 @@ export class FireTwin extends BaseTwin {
  tick(_dt:number,c:TwinContext){for(const t of c.twins()){if(t.state.id===this.state.id||!["tank","wall","pipe"].includes(t.state.kind))continue;const r=Math.max(1,d(this.state.position,t.state.position));const flux=Math.min(80,(this.intensityMw*120)/(r*r));if(flux>1)c.emit({type:"thermal.exposure",sourceId:this.state.id,targetId:t.state.id,payload:{heatFluxKwM2:flux}});}}
  clone():Twin{const x=new FireTwin(this.state.id,{...this.state.position},this.intensityMw);Object.assign(x.state,structuredClone(this.state));return x}
 }
+

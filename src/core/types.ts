@@ -44,7 +44,7 @@ export interface TwinMetadata {
   history?: TwinHistoryEntry[];
 }
 
-export type EventType = "fault.pipe_leak"|"release.created"|"release.updated"|"release.ignited"|"fire.created"|"thermal.exposure"|"asset.failed"|"valve.command"|"suppression.command";
+export type EventType = "fault.asset"|"fault.pipe_leak"|"release.created"|"release.updated"|"release.ignited"|"fire.created"|"thermal.exposure"|"asset.failed"|"valve.command"|"suppression.command";
 
 export interface SimEvent<T extends Record<string,unknown> = Record<string,unknown>> {
   id:string;
@@ -73,3 +73,4 @@ export interface Twin {
   tick(dt:number,context:TwinContext):void;
   clone():Twin;
 }
+

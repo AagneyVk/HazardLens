@@ -1,4 +1,4 @@
-import { SimEvent, Twin, TwinContext, TwinState, TwinMetadata, BehaviorModel } from "../core/types.js";
+import type { SimEvent, Twin, TwinContext, TwinState, TwinMetadata, BehaviorModel } from "../core/types.js";
 
 export abstract class BaseTwin implements Twin {
   public readonly metadata: TwinMetadata;
@@ -38,3 +38,4 @@ export abstract class BaseTwin implements Twin {
     return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
   }
 }
+
