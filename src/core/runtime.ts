@@ -10,6 +10,7 @@ export class SimulationRuntime {
   private readonly registry = new Map<string, Twin>();
   private readonly queue: SimEvent[] = [];
   private readonly history: SimEvent[] = [];
+  private readonly significantHistory:SimEvent[]=[];
   private sequence = 0;
   private processedEvents = 0;
   time = 0;
@@ -44,7 +45,8 @@ export class SimulationRuntime {
   snapshot(options: SnapshotOptions = {}): WorldSnapshot {
     const eventLimit = options.eventLimit ?? this.historyLimit;
     if (!Number.isInteger(eventLimit) || eventLimit < 0) throw new Error('Invalid event limit');
-    const selectedHistory = options.significantOnly ? this.history.filter(e => e.type !== 'thermal.exposure') : this.history;
+    const significant=eventLimit===0?[]:this.significantHistory.slice(-eventLimit),thermalSlots=Math.max(0,eventLimit-significant.length);
+    const selectedHistory = options.significantOnly ? this.significantHistory : [...(thermalSlots?this.history.filter(e=>e.type==='thermal.exposure').slice(-thermalSlots):[]),...significant].sort((a,b)=>Number(a.id.slice(4))-Number(b.id.slice(4)));
     const events = eventLimit === 0 ? [] : selectedHistory.slice(-eventLimit);
     return { time: this.time, twins: [...this.registry.values()].map(t => structuredClone(t.state)),
       events: structuredClone(events), totalEvents: this.processedEvents,
@@ -59,6 +61,7 @@ export class SimulationRuntime {
     }), this.graph?.clone());
     copy.time = this.time; copy.sequence = this.sequence; copy.processedEvents = this.processedEvents;
     copy.history.push(...structuredClone(this.history)); copy.queue.push(...structuredClone(this.queue));
+    copy.significantHistory.push(...structuredClone(this.significantHistory));
     return copy;
   }
   private context(causedBy?:string): TwinContext {
@@ -113,6 +116,7 @@ export class SimulationRuntime {
       if (++processed > 10000) throw new Error('Event cascade exceeded safety limit');
       const event = this.queue.shift()!;
       this.history.push(event); this.processedEvents++;
+      if(event.type!=='thermal.exposure'){this.significantHistory.push(event);if(this.significantHistory.length>2000)this.significantHistory.shift()}
       this.materialize(event);
       const context = this.context(event.id);
       if (event.targetId) this.registry.get(event.targetId)?.onEvent(event, context);

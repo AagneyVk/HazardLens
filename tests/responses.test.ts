@@ -6,6 +6,11 @@ import {TankTwin,PipeTwin} from '../src/twins/process.js';
 import {IndustrialTwin} from '../src/twins/industrial.js';
 import {compareIntervention} from '../src/facility/report.js';
 const pos={x:0,y:0,z:0};const station=()=>new IndustrialTwin('station','emergency',{x:15,y:0,z:0});
+test('response journal survives thermal event history rollover',()=>{
+ const rt=new SimulationRuntime();rt.emit({type:'response.applied',sourceId:'pipe',payload:{mode:'isolate'}});
+ for(let batch=0;batch<21;batch++){for(let i=0;i<1000;i++)rt.emit({type:'thermal.exposure',sourceId:'heat',payload:{heatFluxKwM2:1}});rt.step(.05)}
+ assert.ok(rt.snapshot().events.some(e=>e.type==='response.applied'));assert.ok(rt.snapshot({significantOnly:true,eventLimit:80}).events.some(e=>e.type==='response.applied'));assert.equal(rt.snapshot({eventLimit:0}).events.length,0);assert.deepEqual(rt.clone().snapshot(),rt.snapshot());
+});
 test('destroyed or missing equipment stops its attached fire without consuming phantom fuel',()=>{
  const tank=new TankTwin('tank',pos),fire=new FireTwin('fire',pos,3,'tank');const rt=new SimulationRuntime([tank,fire]);rt.step(.05);
  rt.emit({type:'fault.asset',sourceId:'operator',targetId:'tank',payload:{mode:'rupture',severity:1}});rt.step(.05);

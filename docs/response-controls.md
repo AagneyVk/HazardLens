@@ -4,6 +4,9 @@ The selected-object editor now has **Contain the incident** actions. Choose a
 response in the preview selector and compare two cloned worlds before applying it.
 Comparison includes active fires, failed assets, peak equipment temperature and
 remaining released gas. Responses appear as applied/rejected events in Domino chain.
+The latest 2,000 significant events have a separate bounded journal so heat-transfer
+traffic does not immediately erase response history. Per-cell heat is summed per
+target before event emission; exports prioritize significant events within their limit.
 
 | Action | Model effect | Limit |
 |---|---|---|

@@ -51,7 +51,7 @@ export class BlastEffect {
   }
 }
 
-function fieldMaterial(smoke:boolean){return new THREE.ShaderMaterial({uniforms:{time:{value:0}},transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:smoke?THREE.NormalBlending:THREE.AdditiveBlending,
+function fieldMaterial(smoke:boolean){return new THREE.ShaderMaterial({uniforms:{time:{value:0}},transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.NormalBlending,
  vertexShader:`varying vec2 vUv; varying float seed; void main(){vUv=uv;seed=instanceMatrix[3].x*.37+instanceMatrix[3].z*.71;gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.);}`,
  fragmentShader:`uniform float time;varying vec2 vUv;varying float seed;
  float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
@@ -69,7 +69,7 @@ export class FloorGasEffect{
   this.gas.material.uniforms.time.value=this.flame.material.uniforms.time.value=time;
   for(const cell of twin.gasCells??[]){if(cell.volumeFraction<.001&&!cell.burning)continue;
    for(let layer=0;layer<3;layer++){pose.position.set(cell.x+Math.sin(time*.6+cell.index+layer)*.1,.08+layer*.17,cell.z+Math.cos(time*.4+cell.index)*.1);pose.rotation.set(-Math.PI/2,0,layer*.8);pose.scale.setScalar(.85+layer*.07);pose.updateMatrix();this.gas.setMatrixAt(gasCount++,pose.matrix)}
-   if(cell.burning){const height=.5+Math.min(2,cell.massKg*5),flicker=1+.13*Math.sin(time*13+cell.index);for(let side=0;side<2;side++){pose.position.set(cell.x,height*.75,cell.z);pose.rotation.set(0,side*Math.PI/2,0);pose.scale.set(1,height*.5*flicker,1);pose.updateMatrix();this.flame.setMatrixAt(fireCount++,pose.matrix)}}
+   if(cell.burning){const height=1+Math.min(2,cell.massKg*6),flicker=1+.13*Math.sin(time*13+cell.index);for(let side=0;side<2;side++){pose.position.set(cell.x,height*.75,cell.z);pose.rotation.set(0,side*Math.PI/2,0);pose.scale.set(.85,height*.5*flicker,1);pose.updateMatrix();this.flame.setMatrixAt(fireCount++,pose.matrix)}}
   }this.gas.count=gasCount;this.flame.count=fireCount;this.gas.instanceMatrix.needsUpdate=this.flame.instanceMatrix.needsUpdate=true;if(this.gas.instanceColor)this.gas.instanceColor.needsUpdate=true;
  }
 }

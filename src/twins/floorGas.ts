@@ -34,6 +34,7 @@ export class FloorGasTwin extends ReleaseTwin{
   const hot=twins.filter(t=>t.state.active&&((t.state.kind==='fire'&&Number(t.state.metadata.intensityMw)>0)||(t.state.kind==='explosion'&&Number(t.state.metadata.age)<.6)||(t.state.kind==='ignition'&&t.state.metadata.enabled===true)));
   const fields=twins.filter(t=>t instanceof FloorGasTwin) as FloorGasTwin[];
   const nextBurning=new Set<number>();
+  const heatByTarget=new Map<string,number>();
   for(let i=0;i<this.masses.length;i++){
    const concentration=fields.reduce((sum,f)=>sum+f.fraction(i),0),point=this.point(i);
    if(context.now<this.suppressedUntil||this.masses[i]<1e-10||concentration<FLOOR_GAS.lfl||concentration>FLOOR_GAS.ufl)continue;
@@ -51,9 +52,10 @@ export class FloorGasTwin extends ReleaseTwin{
    for(const target of twins){if(target.state.integrity<=0||!['tank','pipe','wall','reactor','pump','compressor','cooling','control','emergency'].includes(target.state.kind))continue;
     const end={...target.state.position,y:1};if(blockedByWall(point,end,twins,target.state.id))continue;
     const r=Math.max(1,Math.hypot(point.x-end.x,point.z-end.z));const flux=.3*mw*1000/(4*Math.PI*r*r);
-    if(flux>.1)context.emit({type:'thermal.exposure',sourceId:this.state.id,targetId:target.state.id,payload:{heatFluxKwM2:flux,durationS:dt,cellIndex:i}});
+    if(flux>.1)heatByTarget.set(target.state.id,(heatByTarget.get(target.state.id)??0)+flux);
    }
   }
+  for(const [targetId,flux] of heatByTarget)context.emit({type:'thermal.exposure',sourceId:this.state.id,targetId,payload:{heatFluxKwM2:flux,durationS:dt,contributingCells:nextBurning.size}});
   this.burning=nextBurning;this.publish();
  }
  private publish(){this.massKg=this.masses.reduce((a,b)=>a+b,0);Object.assign(this.state.metadata,{massKg:this.massKg,receivedKg:this.receivedKg,dispersedKg:this.dispersedKg,burnedKg:this.burnedKg,ignited:this.ignited,burningCells:this.burning.size});this.state.gasCells=[];for(let i=0;i<this.masses.length;i++)if(this.masses[i]>1e-7){const p=this.point(i);this.state.gasCells.push({index:i,x:p.x,z:p.z,massKg:this.masses[i],volumeFraction:this.fraction(i),burning:this.burning.has(i)})}}
