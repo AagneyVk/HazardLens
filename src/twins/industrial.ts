@@ -5,6 +5,8 @@ export type IndustrialKind = Extract<TwinKind, 'reactor' | 'pump' | 'compressor'
 
 /** Qualitative service/equipment model; constants are disclosed in the model registry. */
 export class IndustrialTwin extends BaseTwin {
+  inventoryKg=1000; withdrawnKg=0;
+  withdrawFuel(requestedKg:number){if(this.state.kind!=="reactor"||!Number.isFinite(requestedKg)||requestedKg<=0)return 0;const amount=Math.min(this.inventoryKg,requestedKg);this.inventoryKg-=amount;this.withdrawnKg+=amount;this.state.metadata.inventoryKg=this.inventoryKg;return amount}
   constructor(id: string, kind: IndustrialKind, position: Vec3) {
     super({ id, kind, position: { ...position }, fidelity: 1, active: true, integrity: 1,
       temperatureK: kind === 'reactor' ? 340 : 303,
@@ -63,6 +65,7 @@ export class IndustrialTwin extends BaseTwin {
   }
   clone(): Twin {
     const copy = new IndustrialTwin(this.state.id, this.state.kind as IndustrialKind, this.state.position);
+    copy.inventoryKg=this.inventoryKg;copy.withdrawnKg=this.withdrawnKg;
     Object.assign(copy.state, structuredClone(this.state));
     Object.assign(copy.metadata, structuredClone(this.metadata));
     return copy;

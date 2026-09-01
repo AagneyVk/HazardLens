@@ -2,7 +2,7 @@ import type { FacilityTwinGraph } from '../facility/graph.js';
 import type { SimEvent, Twin, TwinContext, WorldSnapshot, Vec3 } from './types.js';
 import { FireTwin, ReleaseTwin } from '../twins/hazards.js';
 
-export interface SnapshotOptions { eventLimit?: number; includeGraph?: boolean; }
+export interface SnapshotOptions { eventLimit?: number; includeGraph?: boolean; significantOnly?: boolean; }
 export class SimulationRuntime {
   private readonly registry = new Map<string, Twin>();
   private readonly queue: SimEvent[] = [];
@@ -37,7 +37,8 @@ export class SimulationRuntime {
   snapshot(options: SnapshotOptions = {}): WorldSnapshot {
     const eventLimit = options.eventLimit ?? this.historyLimit;
     if (!Number.isInteger(eventLimit) || eventLimit < 0) throw new Error('Invalid event limit');
-    const events = eventLimit === 0 ? [] : this.history.slice(-eventLimit);
+    const selectedHistory = options.significantOnly ? this.history.filter(e => e.type !== 'thermal.exposure') : this.history;
+    const events = eventLimit === 0 ? [] : selectedHistory.slice(-eventLimit);
     return { time: this.time, twins: [...this.registry.values()].map(t => structuredClone(t.state)),
       events: structuredClone(events), totalEvents: this.processedEvents,
       historyTruncated: this.processedEvents > events.length,
@@ -72,7 +73,7 @@ export class SimulationRuntime {
     } else {
       const intensity = Number(event.payload.intensityMw);
       if (!Number.isFinite(intensity) || intensity <= 0) throw new Error('Invalid fire intensity');
-      this.add(new FireTwin(id, origin, intensity));
+      this.add(new FireTwin(id, origin, intensity, event.sourceId));
     }
   }
   private drainEvents(): void {

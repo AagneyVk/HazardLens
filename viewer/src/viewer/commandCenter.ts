@@ -52,7 +52,7 @@ export class CommandCenter {
   this.assetSelect.multiple=true;this.assetSelect.size=6;this.assetSelect.setAttribute('aria-label','Target assets');
   this.assetSelect.onchange=()=>{for(const option of this.assetSelect.options){if(option.selected)this.selected.add(option.value);else this.selected.delete(option.value)}this.refreshModes();};
   const selectionTools=document.createElement('div');selectionTools.className='hl-selection-tools';
-  selectionTools.append(button('Select visible',()=>{for(const o of this.assetSelect.options){o.selected=true;this.selected.add(o.value)}this.refreshModes()}),button('Clear',()=>{this.selected.clear();this.renderAssets();this.refreshModes()}));
+  selectionTools.append(button('Focus',()=>{const id=[...this.selected].at(-1);if(id)actions.focus(id)}),button('Select visible',()=>{for(const o of this.assetSelect.options){o.selected=true;this.selected.add(o.value)}this.refreshModes()}),button('Clear',()=>{this.selected.clear();this.renderAssets();this.refreshModes()}));
   const hint=document.createElement('p');hint.className='hl-hint';hint.textContent='Ctrl/Cmd-click selects multiple. Click a 3D asset to inspect; Shift-click adds it.';
   const failureHeading=document.createElement('h2');failureHeading.textContent='02 / Apply disturbance';
   const modeLabel=document.createElement('label');modeLabel.textContent='Failure mode';modeLabel.append(this.modeSelect);this.modeSelect.setAttribute('aria-label','Failure mode');

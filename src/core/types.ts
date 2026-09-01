@@ -75,5 +75,6 @@ export interface Twin {
   onEvent(event:SimEvent,context:TwinContext):void;
   tick(dt:number,context:TwinContext):void;
   clone():Twin;
+  withdrawFuel?(requestedKg:number):number;
 }
 

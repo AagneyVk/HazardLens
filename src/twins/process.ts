@@ -24,7 +24,7 @@ export class WeatherTwin extends BaseTwin {
 }
 
 export class PipeTwin extends BaseTwin {
- leakRateKgS=0; failed=false; isolated=false;
+ leakRateKgS=0; failed=false; isolated=false; inventoryKg=1000; withdrawnKg=0;
  constructor(id:string,position:TwinState["position"],public chemical="propane"){
   super({id,kind:"pipe",position,fidelity:1,active:true,integrity:1,temperatureK:303,metadata:{chemical}},physical("steel",{chemical}));
  }
@@ -39,8 +39,9 @@ export class PipeTwin extends BaseTwin {
   if(event.type==="valve.command"&&event.payload.pipeId===this.state.id){this.isolated=event.payload.closed!==false;if(this.isolated)this.leakRateKgS=0;this.state.metadata.isolated=this.isolated;}
  }
  private release(context:TwinContext,rate:number,causedBy?:string){if(!Number.isFinite(rate)||rate<=0||this.isolated)return;this.leakRateKgS=Math.max(this.leakRateKgS,rate);this.state.integrity=Math.max(0,this.state.integrity-.15);context.emit({type:"release.created",sourceId:this.state.id,causedBy,payload:{chemical:this.chemical,rateKgS:this.leakRateKgS,origin:{...this.state.position}}});}
- tick():void{}
- clone():Twin{const c=new PipeTwin(this.state.id,{...this.state.position},this.chemical);c.leakRateKgS=this.leakRateKgS;c.failed=this.failed;c.isolated=this.isolated;Object.assign(c.state,cloneState(this.state));return c}
+ withdrawFuel(requestedKg:number){if(this.isolated||this.state.metadata.operating===false||!Number.isFinite(requestedKg)||requestedKg<=0)return 0;const amount=Math.min(this.inventoryKg,requestedKg);this.inventoryKg-=amount;this.withdrawnKg+=amount;this.state.metadata.inventoryKg=this.inventoryKg;return amount}
+ tick(_dt:number,context:TwinContext):void{const pumps=context.graph?.providers(this.state.id,"power")??[];this.state.metadata.operating=pumps.every(id=>context.get(id)?.state.metadata.operating===true)}
+ clone():Twin{const c=new PipeTwin(this.state.id,{...this.state.position},this.chemical);c.leakRateKgS=this.leakRateKgS;c.failed=this.failed;c.isolated=this.isolated;c.inventoryKg=this.inventoryKg;c.withdrawnKg=this.withdrawnKg;Object.assign(c.state,cloneState(this.state));return c}
 }
 
 export class IgnitionSourceTwin extends BaseTwin {
@@ -50,7 +51,7 @@ export class IgnitionSourceTwin extends BaseTwin {
 }
 
 export class TankTwin extends BaseTwin {
- heatDose=0; failed=false;
+ heatDose=0; failed=false; inventoryKg=5000; withdrawnKg=0;
  constructor(id:string,position:TwinState["position"],public chemical="propane"){
   super({id,kind:"tank",position,fidelity:1,active:true,integrity:1,temperatureK:303,metadata:{chemical,failureRisk:0}},physical("steel",{chemical,capacity:5000}));
  }
@@ -66,8 +67,9 @@ export class TankTwin extends BaseTwin {
   return;
  }
  if(event.type!=="thermal.exposure"||event.targetId!==this.state.id||this.failed)return;this.record(event,"thermal exposure received");const flux=Number(event.payload.heatFluxKwM2??0)*Number(event.payload.durationS??1);this.heatDose+=flux;this.state.temperatureK+=flux*.018;this.state.integrity=Math.max(0,this.state.integrity-flux*.00008);this.state.metadata.failureRisk=Math.min(.99,this.heatDose/16000);if(this.heatDose>=900||this.state.temperatureK>=520||this.state.integrity<=.65){this.failed=true;this.state.active=false;this.state.integrity=0;context.emit({type:"asset.failed",sourceId:this.state.id,payload:{kind:"tank",mode:"thermal-rupture",heatDose:this.heatDose}});context.emit({type:"release.created",sourceId:this.state.id,payload:{chemical:this.chemical,rateKgS:2.4,origin:{...this.state.position}}});context.emit({type:"fire.created",sourceId:this.state.id,payload:{origin:{...this.state.position},intensityMw:7}})}}
+ withdrawFuel(requestedKg:number){if(!Number.isFinite(requestedKg)||requestedKg<=0)return 0;const amount=Math.min(this.inventoryKg,requestedKg);this.inventoryKg-=amount;this.withdrawnKg+=amount;this.state.metadata.inventoryKg=this.inventoryKg;return amount}
  tick():void{}
- clone():Twin{const c=new TankTwin(this.state.id,{...this.state.position},this.chemical);c.heatDose=this.heatDose;c.failed=this.failed;Object.assign(c.state,cloneState(this.state));return c}
+ clone():Twin{const c=new TankTwin(this.state.id,{...this.state.position},this.chemical);c.heatDose=this.heatDose;c.failed=this.failed;c.inventoryKg=this.inventoryKg;c.withdrawnKg=this.withdrawnKg;Object.assign(c.state,cloneState(this.state));return c}
 }
 
 export class WallTwin extends BaseTwin {

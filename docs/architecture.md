@@ -1,113 +1,50 @@
-# HazardLens Architecture
+# Industrial platform architecture
 
-## 1. Product contract
+## Ownership
 
-HazardLens is not a timeline-driven disaster animation. A run begins from a facility configuration and a deliberate initial disturbance. Every downstream state transition must be attributable to twin logic, consequence models, uncertainty, and events.
+`src/facility/generator.ts` creates every facility twin and a `FacilityTwinGraph`.
+The graph contains stable IDs, positions, zones, and typed directed edges. Graph
+construction rejects missing endpoints, self-links and duplicate edges; validation
+checks that every facility node has a twin and every facility twin has a node.
+Transient fires and releases are runtime-created twins, not static graph nodes.
 
-## 2. Runtime layers
+`SimulationRuntime` owns time, the twin registry, the event queue and retained history.
+`Twin.tick(dt, context)` changes simulation state; `onEvent` reacts to targeted or
+broadcast events. Commands are validated as a complete batch before enqueueing.
+Snapshots contain deep copies. Counterfactuals clone state, queued events, metadata,
+time, counters and topology.
 
-### Twin layer
-Each twin owns identity, geometry reference, physical parameters, dynamic state, health, fidelity, uncertainty, capabilities, and subscriptions.
+The viewer obtains snapshots from `ViewerSimulation`. `WorldRenderer` binds geometry
+to `TwinState.id`; equipment appearance, selection, integrity, heat and activity come
+from those states. Only the ground, grid and lights exist outside the twin model.
+Reset explicitly disposes facility geometries/materials before rebuilding.
 
-### Event fabric
-Twins communicate only through typed events. Examples:
-- `material_release_started`
-- `thermal_exposure_changed`
-- `flammable_region_intersects_ignition_source`
-- `fire_started`
-- `overpressure_received`
-- `structural_damage_changed`
-- `asset_failed`
-- `geometry_changed`
-- `route_invalidated`
-- `suppression_activated`
+## Time and service semantics
 
-### Physics/consequence layer
-Provides replaceable model adapters for source terms, dispersion, thermal radiation, combustion/fire growth, blast/overpressure, component fragility, structural thermal response, exposure, and routing risk.
+The viewer integrates in fixed 0.05-second steps. The core permits other positive
+finite steps for experiments. Each step drains commands, ticks a stable twin list,
+advances time, then drains resulting events. Event times identify the emission
+instant. Heat events carry duration explicitly, so heat dose is kW/m² × seconds.
 
-### World state
-The single authoritative snapshot consumed by the renderer, forecast engine, intervention planner, recorder, and inspector.
+Graph edges distinguish process, power, cooling, control and emergency-route links.
+Process links currently document connectivity; this is not a hydraulic network solver.
+Pumps gate connected pipe withdrawal. Cooling gates reactor temperature evolution.
+The control center and access roads gate emergency-system availability. Compressor
+failure affects its own state; compressor process dynamics are not yet coupled.
+Dependencies read provider states in deterministic generator order; graph edits and
+arbitrary cyclic coupled-equation solving are not supported.
 
-### 3D renderer
-Renders geometry and effects from world-state deltas. It may interpolate motion and visuals but must never alter physical state.
+## Bounded data
 
-### Forecast/intervention layer
-Clones world state, applies candidate interventions, runs forward simulations, and compares risk metrics.
+The runtime retains 20,000 recent events and counts all processed events. Each twin
+retains at most 256 local history entries. Viewer snapshots request 80 significant
+events; raw thermal ticks are omitted from the displayed trace. JSON export discloses
+history truncation. It is an incident snapshot, not a complete replay archive or a
+durable audit database. Long-running telemetry ingestion requires external persistence.
 
-## 3. Fidelity orchestration
+## Branch integration
 
-Twins expose a fidelity level:
-
-- `F0 Dormant`: static state only
-- `F1 Monitoring`: low-cost telemetry/state checks
-- `F2 Analytical`: reduced-order physical equations
-- `F3 Surrogate`: calibrated surrogate / higher-resolution local model
-- `F4 High Fidelity`: expensive solver or cached high-fidelity result
-
-A scheduler raises fidelity based on proximity to active hazards, uncertainty, predicted cascade importance, and intervention relevance. Compute should follow risk rather than update every asset equally.
-
-## 4. Simulation clocks
-
-Rendering and physics are decoupled:
-
-- Renderer target: 60 FPS
-- Twin/state tick: 10-20 Hz
-- Heavy consequence models: 1-5 Hz or event-triggered
-- Monte Carlo / counterfactual forecast: on demand
-- High-fidelity CFD/FEM: offline, cached, or selectively invoked
-
-## 5. Emergent domino rule
-
-No downstream event may depend on a scenario name or scripted timestamp.
-
-Bad:
-
-```text
-if scenario == "tank_leak":
-  at 45s: ignite()
-  at 90s: explode(T2)
-```
-
-Required:
-
-```text
-ValveTwin changes leak state
-→ release source calculated
-→ ReleaseTwin evolves in WeatherTwin field
-→ flammable region reaches IgnitionSourceTwin
-→ ignition model creates FireTwin
-→ thermal field reaches TankTwin T2
-→ T2 thermal/pressure state evolves
-→ failure model determines outcome
-```
-
-## 6. Intervention contract
-
-Interventions are normal state changes on available facility capabilities, not magic shortcuts.
-
-Examples:
-- close isolation valve
-- activate installed deluge/suppression system
-- emergency shutdown
-- change responder/evacuation routing
-- isolate a process section
-
-The same simulation engine must evaluate untreated and treated futures.
-
-## 7. Provenance
-
-Each state-changing model result should carry:
-
-- model identifier/version
-- input values
-- output values
-- confidence/uncertainty
-- fidelity level
-- source/reference key
-- timestamp
-
-This powers the Simulation Inspector and prevents the 3D experience from becoming an unexplained black box.
-
-## 8. Safety positioning
-
-HazardLens is a simulation and decision-support research prototype. It does not claim certified operational guidance, exact prediction, or replacement of site-specific emergency procedures and trained responders.
+The upstream industrial expansion commit `8e963c2` was an ancestor of foundation
+`b7afbdd`; there were no unmerged commits in the former. The production-feature branch
+starts from `b7afbdd`. Obsolete viewer-only generators, registries and queue stubs were
+removed after their roles were integrated into the core.

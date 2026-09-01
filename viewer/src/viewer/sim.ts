@@ -46,5 +46,5 @@ export class ViewerSimulation {
     this.accumulator += Math.min(realDt, .1) * this.speed;
     while (this.accumulator >= .05) { this.runtime.step(.05); this.accumulator -= .05; }
   }
-  snapshot(): WorldSnapshot { return this.runtime.snapshot({ eventLimit: 80, includeGraph: false }); }
+  snapshot(): WorldSnapshot { return this.runtime.snapshot({ eventLimit: 80, includeGraph: false, significantOnly: true }); }
 }

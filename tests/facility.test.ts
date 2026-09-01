@@ -49,3 +49,9 @@ test('counterfactuals leave live state unchanged and incident exports include pr
  assert.deepEqual(runtime.snapshot(),before);
  const report=exportIncident(runtime);assert.equal(report.schemaVersion,1);assert.ok(report.snapshot.graph);
 });
+
+test('render snapshots bound event payloads and expose truncation explicitly', () => {
+ const runtime=new SimulationRuntime();for(let i=0;i<30;i++)runtime.emit({type:'service.changed',sourceId:'test',payload:{}});runtime.step(.1);
+ const snapshot=runtime.snapshot({eventLimit:5});assert.equal(snapshot.events.length,5);assert.equal(snapshot.totalEvents,30);assert.equal(snapshot.historyTruncated,true);
+ assert.equal(runtime.snapshot({eventLimit:0}).events.length,0);
+});

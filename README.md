@@ -1,108 +1,92 @@
 # HazardLens
 
-**HazardLens** is an emergent industrial-disaster digital-twin platform for DER-02: Threat-Zone Estimation for Industrial Fire and Explosion Response.
+An interactive industrial-facility simulation platform for free-form failure exploration,
+causal inspection, and counterfactual response experiments.
 
-The core idea is deliberately different from a scripted scenario simulator: HazardLens models the **things that cause disasters**. Tanks, pipes, valves, structures, weather, hazards, workers, and response systems are represented as independent twins. Their state changes propagate through an event fabric, allowing leaks, ignition, fire spread, thermal escalation, structural damage, secondary releases, explosions, evacuation changes, and mitigation outcomes to emerge from the current facility state.
+**Release candidate: 0.3.0 · `feat/hazardlens-industrial-platform`**
 
-## Core principles
+HazardLens is a qualitative reference simulator for research and training. It is not a
+validated predictor of toxic concentrations, blast distances, or real emergency outcomes.
+There is no live plant telemetry connection in this release.
 
-1. **No fixed catastrophe scripts.** The operator injects an initial disturbance; downstream effects come from twin state and interaction models.
-2. **Asset-level twins own their state.** The renderer never decides physical outcomes.
-3. **Events connect twins.** Thermal exposure, overpressure, flow loss, rupture, ignition, geometry changes, and intervention actions are first-class events.
-4. **3D is a view of world state.** Damage, fire, plume, evacuation, and suppression visuals reflect simulation state rather than drive it.
-5. **Adaptive fidelity.** Expensive models are activated around risk; stable assets remain lightweight.
-6. **Counterfactual intervention.** A live state can be cloned and candidate response plans simulated before selection.
-7. **Model provenance and uncertainty are visible.** HazardLens is decision-support simulation, not a claim of exact future prediction.
+## Integrated facility
 
-## Architecture
+One generator supplies both the simulation and the 3D view. The default facility has
+**240 assets plus weather**, with stable IDs and a validated `FacilityTwinGraph`:
 
-```text
-Twin Library ──→ Event Fabric ──→ Physics / Consequence Models
-      │                                │
-      └──────────────→ World State ←───┘
-                            │
-                 ┌──────────┴──────────┐
-                 ↓                     ↓
-             3D Renderer        Forecast / Intervention
-```
+| Asset | Count | ID prefix |
+|---|---:|---|
+| Tanks | 60 | T |
+| Pipes | 120 | P |
+| Reactors | 8 | R |
+| Pumps | 12 | PU |
+| Compressors | 6 | CP |
+| Cooling units | 4 | CL |
+| Control center | 1 | CTRL |
+| Emergency systems | 8 | ES |
+| Roads | 3 | RD |
+| Walls | 12 | W |
+| Ignition sources | 6 | M |
 
-## Running locally
+Twins own physical and service state. The renderer reads snapshots; it does not decide
+failures. Cooling loss affects connected reactors, pump outages interrupt connected
+pipe sources, and control/access failures restrict emergency response.
 
-### Requirements
+## Run
 
-- Node.js 22+
-- npm
+Requires Node.js 22+ and a WebGL2-capable browser.
 
-### Install dependencies
-
-```bash
-npm install
-```
-
-### Run simulation tests
-
-```bash
+```sh
+npm ci
 npm test
-```
-
-### Run the headless simulation demo
-
-```bash
-npm run demo
-```
-
-### Start the 3D viewer
-
-```bash
 npm run viewer
 ```
 
-Then open the local Vite URL shown in the terminal.
+Open the Vite URL. Additional commands:
 
-### Build everything
-
-```bash
-npm run build:all
+```sh
+npm run build:all       # core and viewer TypeScript checks + production bundle
+npm run demo            # headless reference experiment
+npm run benchmark       # 240 assets / 20 initial faults / 30 simulated seconds
+npx playwright install chromium
+npm run test:browser    # requires a built viewer; exercises Chromium/WebGL
 ```
 
-## Current status
+## Operator workflow
 
-The project currently contains:
+1. Search by asset ID, type, or zone. Select multiple assets with Ctrl/Cmd-click,
+   or use **Select visible**. Shift-click adds 3D assets to the selection.
+2. Choose a supported shared failure mode and severity. **Inject failure** can be
+   repeated on any available assets; there are no fixed incident scripts.
+3. Inspect temperature, integrity, operational state, providers and dependents.
+   **Show connections** reveals the generated graph.
+4. Isolate selected pipes, suppress fires, or compare suppression against a cloned
+   no-intervention continuation over ten seconds. The comparison does not mutate
+   the live world or automatically apply a recommendation.
+5. Pause, change speed, reset, or export the incident as JSON with model version,
+   units, summary, topology, twin state and retained events.
 
-- deterministic event-driven twin runtime
-- emergent hazard propagation
-- thermal exposure and secondary failure modelling
-- counterfactual intervention foundation
-- Three.js digital twin viewer
-- interactive twin inspection
+On narrow screens the console becomes a scrollable bottom panel. WebGL failures
+produce a visible startup message. No account or server is required for local use.
 
-The next development phases focus on higher-fidelity industrial assets, consequence models, and expanded response simulation.
+## Engineering checks
 
+- Validated all-or-nothing failure batches and graph endpoint validation.
+- Unique hazard IDs and one active release stream per source.
+- Finite source inventories with release/dispersal/combustion mass accounting.
+- Elapsed-time thermal dose, deterministic cloning and bounded retained history.
+- Locked dependencies and CI on Node 22 and 24.
+- Browser integration test with overview, cascade, and mobile screenshots.
+- Benchmark output and browser evidence retained as CI artifacts.
 
-## Free-form failure controls
+The industrial expansion branch was already an ancestor of the foundation branch;
+this branch preserves that history and replaces disconnected viewer-only stubs with
+the integrated generator and graph.
 
-Select assets in the command panel (Ctrl/Cmd-click selects multiple) or click an
-asset in the 3D world. Shift/Ctrl/Cmd-click in 3D adds another target. Choose a
-shared failure mode and severity, then **Inject failure**. Repeat on any number
-of available assets; there is no fixed incident script or single target pipe.
+## Documentation
 
-- Pipes and tanks: rupture or overheat.
-- Walls: structural damage or overheat.
-- Ignition sources: enable ignition. Severity does not affect this binary action.
-- Mixed selections offer only modes supported by every selected asset.
-- Isolation targets selected pipes; suppression targets active fires.
-- Pause/resume preserves the current world. Reset restores the initial facility.
-
-The core validates a complete batch before queuing commands. Simultaneous hazard
-creation uses unique event-derived IDs, and fault-generated release/failure events
-retain their initiating event ID. Invalid requests leave the queue unchanged.
-
-These are qualitative reference models: severity is a normalized disturbance
-control, not a calibrated pressure or temperature. Tank rupture releases material;
-ignition still depends on a nearby enabled source. Existing thermal propagation,
-plume, and isolation models require further physical validation before operational
-use. In particular, isolation currently reduces source flow rather than modelling
-transport and depletion of previously released material.
-
-`npm test` covers runtime and viewer-simulation integration. `npm run viewer:build`
-now also type-checks all viewer sources before bundling.
+- [Architecture and contracts](docs/architecture.md)
+- [Model registry, sources, and limitations](docs/model-register.md)
+- [Verification and release gates](docs/validation.md)
+- [Running and diagnosing the platform](docs/operations.md)
+- [Release changes](CHANGELOG.md)
