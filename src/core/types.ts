@@ -2,7 +2,7 @@ import type { FacilityTwinGraph, FacilityGraphSnapshot } from '../facility/graph
 export type TwinKind =
   | "tank" | "pipe" | "valve" | "ignition" | "wall" | "weather"
   | "reactor" | "pump" | "compressor" | "cooling" | "control" | "emergency" | "road"
-  | "release" | "fire" | "suppression" | "worker" | "route";
+  | "release" | "fire" | "explosion" | "suppression" | "worker" | "route";
 
 export type Fidelity = 0 | 1 | 2 | 3 | 4;
 
@@ -46,7 +46,7 @@ export interface TwinMetadata {
   history?: TwinHistoryEntry[];
 }
 
-export type EventType = "service.changed"|"fault.asset"|"fault.pipe_leak"|"release.created"|"release.updated"|"release.ignited"|"fire.created"|"thermal.exposure"|"asset.failed"|"valve.command"|"suppression.command";
+export type EventType = "explosion.created"|"evacuation.command"|"worker.safe"|"service.changed"|"fault.asset"|"fault.pipe_leak"|"release.created"|"release.updated"|"release.ignited"|"fire.created"|"thermal.exposure"|"asset.failed"|"valve.command"|"suppression.command";
 
 export interface SimEvent<T extends Record<string,unknown> = Record<string,unknown>> {
   id:string;
@@ -77,4 +77,3 @@ export interface Twin {
   clone():Twin;
   withdrawFuel?(requestedKg:number):number;
 }
-

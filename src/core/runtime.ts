@@ -1,6 +1,7 @@
 import type { FacilityTwinGraph } from '../facility/graph.js';
 import type { SimEvent, Twin, TwinContext, WorldSnapshot, Vec3 } from './types.js';
 import { FireTwin, ReleaseTwin } from '../twins/hazards.js';
+import { ExplosionTwin } from '../twins/indoor.js';
 
 export interface SnapshotOptions { eventLimit?: number; includeGraph?: boolean; significantOnly?: boolean; }
 export class SimulationRuntime {
@@ -59,6 +60,19 @@ export class SimulationRuntime {
       twins: () => [...this.registry.values()], emit: event => this.emit(event) };
   }
   private materialize(event: SimEvent): void {
+    if (event.type === 'fault.asset' && ['fire', 'explosion'].includes(String(event.payload.mode))) {
+      const target = this.get(event.targetId ?? '');
+      const severity = Number(event.payload.severity);
+      if (!target || !Number.isFinite(severity) || severity <= 0 || severity > 1) return;
+      if (event.payload.mode === 'fire') this.emit({ type: 'fire.created', sourceId: target.state.id, causedBy: event.id, payload: { origin: { ...target.state.position }, intensityMw: 1 + 8 * severity } });
+      else if ((target.withdrawFuel?.(2 * severity) ?? 0) > 0) this.emit({ type: 'explosion.created', sourceId: target.state.id, causedBy: event.id, payload: { origin: { ...target.state.position }, severity } });
+      return;
+    }
+    if (event.type === 'explosion.created') {
+      const origin = event.payload.origin as Vec3, severity = Number(event.payload.severity);
+      if (!origin || ![origin.x, origin.y, origin.z, severity].every(Number.isFinite) || severity <= 0 || severity > 1) throw new Error('Invalid blast');
+      this.add(new ExplosionTwin(`blast-${event.id}`, origin, severity)); return;
+    }
     if (event.type !== 'release.created' && event.type !== 'fire.created') return;
     const origin = event.payload.origin as Vec3 | undefined;
     if (!origin || ![origin.x, origin.y, origin.z].every(Number.isFinite)) throw new Error('Hazard requires a finite origin');

@@ -1,21 +1,22 @@
 import type { TwinKind } from './types.js';
 import type { SimulationRuntime } from './runtime.js';
 
-export type FailureMode = 'rupture' | 'overheat' | 'structural_damage' | 'ignition' | 'outage';
+export type FailureMode = 'rupture' | 'overheat' | 'structural_damage' | 'ignition' | 'outage' | 'fire' | 'explosion';
 export interface FailureRequest { twinId: string; mode: FailureMode; severity: number; }
 
 export const failureModes: Partial<Record<TwinKind, readonly FailureMode[]>> = {
-  pipe: ['rupture', 'overheat'],
-  tank: ['rupture', 'overheat'],
+  pipe: ['rupture', 'fire', 'explosion', 'overheat'],
+  tank: ['rupture', 'fire', 'explosion', 'overheat'],
   wall: ['structural_damage', 'overheat'],
   ignition: ['ignition'],
-  reactor: ['overheat', 'structural_damage', 'outage'],
+  reactor: ['fire', 'explosion', 'overheat', 'structural_damage', 'outage'],
   pump: ['overheat', 'structural_damage', 'outage'],
   compressor: ['overheat', 'structural_damage', 'outage'],
   cooling: ['structural_damage', 'outage'],
   control: ['structural_damage', 'outage'],
   emergency: ['structural_damage', 'outage'],
   road: ['structural_damage'],
+  route: ['structural_damage'],
 };
 
 /** Validate the whole batch before queuing any operator commands. */

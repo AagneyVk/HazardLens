@@ -1,7 +1,7 @@
 import { injectFailures, type FailureRequest } from '../../../src/core/failures.js';
 import { SimulationRuntime } from '../../../src/core/runtime.js';
 import type { WorldSnapshot } from '../../../src/core/types.js';
-import { generateFacility } from '../../../src/facility/generator.js';
+import { generateIndoorFacility } from '../../../src/facility/indoor.js';
 import { compareIntervention, exportIncident } from '../../../src/facility/report.js';
 
 export class ViewerSimulation {
@@ -11,13 +11,14 @@ export class ViewerSimulation {
   private accumulator = 0;
   constructor() { this.runtime = this.makeWorld(); }
   private makeWorld() {
-    const { twins, graph } = generateFacility();
+    const { twins, graph } = generateIndoorFacility();
     return new SimulationRuntime(twins, graph);
   }
   reset() { this.runtime = this.makeWorld(); this.running = false; this.accumulator = 0; }
   inject(requests: readonly FailureRequest[]) { injectFailures(this.runtime, requests); if (requests.length) this.running = true; }
   breakPipe(id = 'P-017') { this.inject([{ twinId: id, mode: 'rupture', severity: .5 }]); }
   toggleRunning() { this.running = !this.running; return this.running; }
+  evacuate() { this.runtime.emit({ type: 'evacuation.command', sourceId: 'operator', payload: {} }); this.running = true; }
   private applySuppression(runtime: SimulationRuntime): number {
     const snapshot = runtime.snapshot({ eventLimit: 0, includeGraph: false });
     const available = snapshot.twins.filter(t => t.kind === 'emergency' && t.integrity > 0 && t.metadata.available === true &&

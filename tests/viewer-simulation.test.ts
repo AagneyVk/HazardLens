@@ -5,12 +5,12 @@ import { ViewerSimulation } from '../viewer/src/viewer/sim.js';
 test('viewer supports repeated batches on arbitrary assets, pause, and reset', () => {
   const sim = new ViewerSimulation();
   const initial = sim.snapshot();
-  sim.inject(['P-001', 'P-002', 'P-120'].map(twinId => ({ twinId, mode: 'rupture', severity: .2 })));
+  sim.inject(['P-001', 'P-002', 'P-004'].map(twinId => ({ twinId, mode: 'rupture', severity: .2 })));
   sim.update(.05);
   assert.equal(sim.snapshot().twins.filter(t => t.kind === 'release').length, 3);
-  sim.inject([{ twinId: 'T-048', mode: 'rupture', severity: .8 }]);
+  sim.inject([{ twinId: 'T-004', mode: 'rupture', severity: .8 }]);
   sim.update(.05);
-  assert.equal(sim.snapshot().twins.find(t => t.id === 'T-048')?.integrity, 0);
+  assert.equal(sim.snapshot().twins.find(t => t.id === 'T-004')?.integrity, 0);
   assert.equal(sim.snapshot().twins.filter(t => t.kind === 'release').length, 4);
   const time = sim.snapshot().time;
   assert.equal(sim.toggleRunning(), false);

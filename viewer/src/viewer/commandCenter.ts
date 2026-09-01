@@ -3,117 +3,103 @@ import type { WorldSnapshot } from '../../../src/core/types.js';
 import type { compareIntervention } from '../../../src/facility/report.js';
 
 interface Actions {
- inject(requests: FailureRequest[]): void; isolate(ids: string[]): void; suppress(): number;
- reset(): void; overview(): void; focus(id: string): void; toggle(): boolean; speed(value: number): void;
- select(ids: string[]): void; graph(): boolean; export(): void;
- forecast(): ReturnType<typeof compareIntervention>;
+  inject(requests: FailureRequest[]): void; isolate(ids: string[]): void; suppress(): number; evacuate(): void;
+  reset(): void; overview(): void; focus(id: string): void; toggle(): boolean; speed(value: number): void;
+  select(ids: string[]): void; graph(): boolean; export(): void; forecast(): ReturnType<typeof compareIntervention>;
 }
-const button = (label: string, action: () => void, className = '') => {
- const element = document.createElement('button'); element.type = 'button'; element.textContent = label;
- element.className = `hl-button ${className}`; element.onclick = action; return element;
+const modes: Record<FailureMode, { label: string; detail: string; icon: string }> = {
+  fire: { label: 'Ignite fire', detail: 'Heat, smoke & evacuation', icon: '♨' },
+  explosion: { label: 'Trigger blast', detail: 'Impulse & structural damage', icon: '✳' },
+  rupture: { label: 'Start leak', detail: 'Release stored material', icon: '◉' },
+  structural_damage: { label: 'Damage structure', detail: 'Fracture & collapse', icon: '▧' },
+  overheat: { label: 'Overheat', detail: 'Raise thermal exposure', icon: '↑' },
+  outage: { label: 'Power outage', detail: 'Disable this service', icon: '⏻' },
+  ignition: { label: 'Enable ignition', detail: 'Activate ignition source', icon: 'ϟ' },
 };
-
+function button(text: string, action: () => void, className = '') {
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.className = className; b.onclick = action; return b;
+}
 export class CommandCenter {
- readonly root = document.createElement('aside');
- private readonly stats = document.createElement('div');
- private readonly clock = document.createElement('span');
- private readonly assetSelect = document.createElement('select');
- private readonly search = document.createElement('input');
- private readonly modeSelect = document.createElement('select');
- private readonly severity = document.createElement('input');
- private readonly severityText = document.createElement('span');
- private readonly feedback = document.createElement('div');
- private readonly timeline = document.createElement('section');
- private readonly forecastPanel = document.createElement('section');
- private readonly injectButton: HTMLButtonElement;
- private readonly pauseButton: HTMLButtonElement;
- private readonly selected = new Set<string>();
- private latest?: WorldSnapshot;
- private assetKey = '';
- private lastEventCount = -1;
- private lastSummary = '';
- private graphButton: HTMLButtonElement;
-
- constructor(private readonly actions: Actions) {
-  this.root.className = 'hl-console'; this.root.setAttribute('aria-label', 'Industrial command center');
-  const header = document.createElement('header');header.className='hl-brand';
-  header.innerHTML='<span class="hl-logomark">H</span><div><h1>HazardLens</h1><p>INDUSTRIAL TWIN PLATFORM</p></div><span class="hl-badge">LAB</span>';
-  const intro=document.createElement('p');intro.className='hl-intro';intro.textContent='One facility. Connected consequences. Explore failures across the live twin network.';
-  this.stats.className='hl-stats';this.stats.setAttribute('aria-label','Facility metrics');
-  const transport=document.createElement('div');transport.className='hl-transport';
-  this.pauseButton=button('Resume',()=>{this.pauseButton.textContent=actions.toggle()?'Pause':'Resume'});
-  const speed=document.createElement('select');speed.setAttribute('aria-label','Simulation speed');
-  for(const value of [1,2,5,10])speed.add(new Option(`${value}× speed`,String(value)));
-  speed.onchange=()=>actions.speed(Number(speed.value));
-  this.clock.className='hl-clock';transport.append(this.pauseButton,speed,this.clock);
-  const heading=document.createElement('h2');heading.textContent='01 / Select assets';
-  this.search.type='search';this.search.placeholder='Search ID, asset type, or zone';this.search.setAttribute('aria-label','Search assets');
-  this.search.oninput=()=>this.renderAssets();
-  this.assetSelect.multiple=true;this.assetSelect.size=6;this.assetSelect.setAttribute('aria-label','Target assets');
-  this.assetSelect.onchange=()=>{for(const option of this.assetSelect.options){if(option.selected)this.selected.add(option.value);else this.selected.delete(option.value)}this.refreshModes();};
-  const selectionTools=document.createElement('div');selectionTools.className='hl-selection-tools';
-  selectionTools.append(button('Focus',()=>{const id=[...this.selected].at(-1);if(id)actions.focus(id)}),button('Select visible',()=>{for(const o of this.assetSelect.options){o.selected=true;this.selected.add(o.value)}this.refreshModes()}),button('Clear',()=>{this.selected.clear();this.renderAssets();this.refreshModes()}));
-  const hint=document.createElement('p');hint.className='hl-hint';hint.textContent='Ctrl/Cmd-click selects multiple. Click a 3D asset to inspect; Shift-click adds it.';
-  const failureHeading=document.createElement('h2');failureHeading.textContent='02 / Apply disturbance';
-  const modeLabel=document.createElement('label');modeLabel.textContent='Failure mode';modeLabel.append(this.modeSelect);this.modeSelect.setAttribute('aria-label','Failure mode');
-  this.modeSelect.onchange=()=>this.updateSeverity();
-  this.severity.type='range';this.severity.min='1';this.severity.max='100';this.severity.value='50';this.severity.setAttribute('aria-label','Failure severity');this.severity.oninput=()=>this.updateSeverity();
-  const severityLabel=document.createElement('label');severityLabel.append(this.severityText,this.severity);this.updateSeverity();
-  this.feedback.className='hl-feedback';this.feedback.setAttribute('role','status');
-  this.injectButton=button('Inject failure',()=>this.execute(()=>{actions.inject([...this.selected].map(twinId=>({twinId,mode:this.modeSelect.value as FailureMode,severity:Number(this.severity.value)/100})));return `Queued disturbances for ${this.selected.size} assets.`},true),'hl-danger');
-  this.injectButton.disabled=true;
-  const interventions=document.createElement('div');interventions.className='hl-action-grid';
-  interventions.append(button('Isolate selected pipes',()=>this.execute(()=>{const ids=[...this.selected].filter(id=>this.latest?.twins.find(t=>t.id===id)?.kind==='pipe');if(!ids.length)throw new Error('Select at least one pipe.');actions.isolate(ids);return `${ids.length} pipe(s) isolated.`},true)),button('Suppress fires',()=>this.execute(()=>`${actions.suppress()} fire(s) targeted.`,true)));
-  const footer=document.createElement('div');footer.className='hl-action-grid';
-  this.graphButton=button('Show connections',()=>{this.graphButton.textContent=actions.graph()?'Hide connections':'Show connections'});
-  footer.append(button('Overview',actions.overview),this.graphButton,button('Export incident JSON',actions.export),button('Reset facility',()=>{actions.reset();this.selected.clear();this.assetKey='';this.lastEventCount=-1;this.forecastPanel.hidden=true;this.pauseButton.textContent='Resume';this.graphButton.textContent='Show connections';this.feedback.textContent='Facility restored.';}));
-  const forecast=button('Compare suppression · 10s',()=>{this.feedback.textContent='Comparing two isolated copies of the live world…';setTimeout(()=>this.execute(()=>{this.showForecast(actions.forecast());return 'Comparison ready. Live state was not changed.';}),0)});
-  const note=document.createElement('p');note.className='hl-model-note';note.textContent='Reference model · qualitative training and research. Not a validated emergency-response forecast.';
-  this.root.append(header,intro,this.stats,transport,heading,this.search,this.assetSelect,selectionTools,hint,failureHeading,modeLabel,severityLabel,this.injectButton,this.feedback,interventions,forecast,footer,note);
-  document.body.append(this.root);
-  this.timeline.className='hl-timeline';this.timeline.setAttribute('aria-label','Causal event timeline');document.body.append(this.timeline);
-  this.forecastPanel.className='hl-forecast';this.forecastPanel.hidden=true;document.body.append(this.forecastPanel);
- }
- private execute(action:()=>string,running=false){try{this.feedback.textContent=action();if(running)this.pauseButton.textContent='Pause'}catch(error){this.feedback.textContent=error instanceof Error?error.message:String(error)}}
- private updateSeverity(){const binary=['outage','ignition'].includes(this.modeSelect.value);this.severity.disabled=binary;this.severityText.textContent=binary?'Binary action · on/off':`Severity · ${this.severity.value}%`}
- private renderAssets(){
-  if(!this.latest)return;const query=this.search.value.toLowerCase();
-  this.assetSelect.replaceChildren(...this.latest.twins.filter(t=>failureModes[t.kind]&&t.active&&t.integrity>0&&`${t.id} ${t.kind} ${t.metadata.zone}`.toLowerCase().includes(query)).map(t=>{const o=new Option(`${t.id} · ${t.kind}`,t.id);o.selected=this.selected.has(t.id);return o}));
- }
- private refreshModes(){
-  if(!this.latest)return;const ids=[...this.selected],previous=this.modeSelect.value;
-  const kinds=ids.map(id=>this.latest!.twins.find(t=>t.id===id)?.kind);
-  const modes=kinds[0]?(failureModes[kinds[0]]??[]).filter(mode=>kinds.every(kind=>kind&&failureModes[kind]?.includes(mode))):[];
-  this.modeSelect.replaceChildren(...modes.map(mode=>new Option(mode.replaceAll('_',' '),mode)));
-  if(modes.includes(previous as FailureMode))this.modeSelect.value=previous;
-  this.injectButton.disabled=!modes.length;this.updateSeverity();
-  this.feedback.textContent=!ids.length?'Select one or more assets to begin.':!modes.length?'Selected assets have no common failure mode.':`${ids.length} assets selected.`;
-  this.actions.select(ids);
- }
- selectTwin(id:string,additive=false){
-  if(!this.latest?.twins.some(t=>t.id===id&&failureModes[t.kind]&&t.integrity>0&&t.active))return;
-  if(!additive)this.selected.clear();this.selected.add(id);this.renderAssets();this.refreshModes();
- }
- private showForecast(result:ReturnType<typeof compareIntervention>){
-  this.forecastPanel.hidden=false;this.forecastPanel.replaceChildren();
-  const title=document.createElement('h2');title.textContent='Suppression comparison · 10s horizon';
-  const table=document.createElement('table');const header=document.createElement('tr');for(const text of ['Outcome','No intervention','Suppression']){const th=document.createElement('th');th.textContent=text;header.append(th)}table.append(header);
-  for(const [label,key] of [['Failed assets','failedAssets'],['Active fires','activeFires'],['Offline equipment','offlineAssets']] as const){const row=document.createElement('tr');for(const text of [label,String(result.baseline[key]),String(result.candidate[key])]){const td=document.createElement('td');td.textContent=text;row.append(td)}table.append(row)}
-  const note=document.createElement('p');note.textContent='Same starting state and reference models. This is a comparison, not a safety recommendation.';
-  this.forecastPanel.append(title,table,note,button('Close',()=>{this.forecastPanel.hidden=true}));
- }
- update(snapshot:WorldSnapshot){
-  this.latest=snapshot;this.clock.textContent=`T+ ${snapshot.time.toFixed(1)}s`;
-  const assets=snapshot.twins.filter(t=>failureModes[t.kind]&&t.active&&t.integrity>0),key=assets.map(t=>t.id).join('|');
-  if(key!==this.assetKey){this.assetKey=key;const available=new Set(assets.map(t=>t.id));for(const id of this.selected)if(!available.has(id))this.selected.delete(id);this.renderAssets();this.refreshModes()}
-  const fires=snapshot.twins.filter(t=>t.kind==='fire'&&t.active).length,releases=snapshot.twins.filter(t=>t.kind==='release'&&t.active).length,failed=snapshot.twins.filter(t=>t.integrity===0).length,assetCount=snapshot.twins.filter(t=>!['fire','release','weather'].includes(t.kind)).length;
-  const summary=`${assetCount}/${fires}/${releases}/${failed}`;
-  if(summary!==this.lastSummary){this.lastSummary=summary;this.stats.replaceChildren();for(const [value,label] of [[assetCount,'ASSETS'],[fires,'FIRES'],[releases,'RELEASES'],[failed,'FAILED']]){const stat=document.createElement('div'),strong=document.createElement('strong'),caption=document.createElement('span');strong.textContent=String(value);caption.textContent=String(label);stat.dataset.metric=String(label).toLowerCase();stat.append(strong,caption);this.stats.append(stat)}}
-  const total=snapshot.totalEvents??snapshot.events.length;
-  if(total!==this.lastEventCount){this.lastEventCount=total;const title=document.createElement('h2');title.textContent=`Event trace · ${total}`;this.timeline.replaceChildren(title);
-   const significant=snapshot.events.filter(e=>e.type!=='thermal.exposure').slice(-6).reverse();
-   for(const event of significant){const row=document.createElement('div');row.className='hl-event';const name=document.createElement('strong');name.textContent=event.type;const detail=document.createElement('span');detail.textContent=`${event.time.toFixed(1)}s · ${event.sourceId}${event.targetId?` → ${event.targetId}`:''}${event.causedBy?` · caused by ${event.causedBy}`:''}`;row.append(name,detail);this.timeline.append(row)}
-   if(!significant.length){const empty=document.createElement('p');empty.textContent='Inject any fault. Follow the consequences here.';this.timeline.append(empty)}
+  readonly root = document.createElement('aside');
+  private selected = new Set<string>(); private latest?: WorldSnapshot; private mode?: FailureMode;
+  private search = document.createElement('input'); private assetList = document.createElement('div');
+  private editor = document.createElement('aside'); private target = document.createElement('h2'); private modeGrid = document.createElement('div');
+  private severity = document.createElement('input'); private severityLabel = document.createElement('span'); private feedback = document.createElement('p');
+  private apply: HTMLButtonElement; private pause: HTMLButtonElement; private clock = document.createElement('span');
+  private metrics = document.createElement('div'); private events = document.createElement('div'); private forecastPanel = document.createElement('section');
+  private lastAssets = ''; private lastMetrics = ''; private lastEvents = -1;
+  constructor(private actions: Actions) {
+    const header = document.createElement('header'); header.className = 'hl-topbar';
+    header.innerHTML = '<div class="hl-brand"><span class="hl-mark">H</span><div><h1>HazardLens</h1><span>INDOOR RESPONSE LAB</span></div></div><div class="hl-location"><i></i> Factory hall <span>/</span> Cutaway view</div>';
+    const tools = document.createElement('div'); tools.className = 'hl-header-tools';
+    tools.append(button('Overview', actions.overview), button('Connections', () => actions.graph()), button('Export', actions.export), button('Reset', () => {
+      actions.reset(); this.selected.clear(); this.lastAssets = ''; this.lastMetrics = ''; this.lastEvents = -1; this.editor.hidden = true; this.pause.textContent = '▶ Run'; this.feedback.textContent = ''; this.forecastPanel.hidden = true;
+    })); header.append(tools); document.body.append(header);
+    this.root.className = 'hl-browser'; this.root.setAttribute('aria-label', 'Facility assets');
+    const browserHeading = document.createElement('h2'); browserHeading.textContent = 'Explore the hall';
+    const hint = document.createElement('p'); hint.textContent = 'Pick an object in 3D or below.';
+    this.search.type = 'search'; this.search.placeholder = 'Find equipment or structure'; this.search.setAttribute('aria-label', 'Search assets'); this.search.oninput = () => this.renderAssets();
+    this.assetList.className = 'hl-asset-list'; this.assetList.setAttribute('aria-label', 'Asset list');
+    const clear = button('Clear selection', () => { this.selected.clear(); this.refreshSelection(); }); clear.className = 'hl-clear';
+    this.root.append(browserHeading, hint, this.search, this.assetList, clear); document.body.append(this.root);
+    this.editor.className = 'hl-editor'; this.editor.hidden = true; this.editor.setAttribute('aria-label', 'Damage editor');
+    const kicker = document.createElement('span'); kicker.className = 'hl-kicker'; kicker.textContent = 'SELECTED TARGET';
+    const focus = button('Focus ↗', () => { const id = [...this.selected].at(-1); if (id) actions.focus(id); });
+    this.modeGrid.className = 'hl-modes'; this.modeGrid.setAttribute('aria-label', 'Damage options');
+    const severityWrap = document.createElement('label'); severityWrap.className = 'hl-severity';
+    this.severity.type = 'range'; this.severity.min = '10'; this.severity.max = '100'; this.severity.value = '70'; this.severity.setAttribute('aria-label', 'Failure severity');
+    this.severity.oninput = () => this.updateSeverity(); severityWrap.append(this.severityLabel, this.severity); this.updateSeverity();
+    this.apply = button('Apply disturbance', () => this.execute(() => {
+      if (!this.mode || !this.selected.size) throw new Error('Select a target and an action.');
+      actions.inject([...this.selected].map(twinId => ({ twinId, mode: this.mode!, severity: Number(this.severity.value) / 100 })));
+      return `${modes[this.mode].label} applied to ${this.selected.size} target(s).`;
+    }, true), 'hl-primary');
+    this.feedback.className = 'hl-feedback'; this.feedback.setAttribute('role', 'status');
+    const help = document.createElement('p'); help.className = 'hl-helper'; help.textContent = 'Shift-click to select multiple objects. Effects follow simulation time.';
+    this.editor.append(kicker, this.target, focus, this.modeGrid, severityWrap, this.apply, this.feedback, help); document.body.append(this.editor);
+    this.metrics.className = 'hl-metrics'; this.metrics.setAttribute('aria-label', 'Live simulation metrics'); document.body.append(this.metrics);
+    const transport = document.createElement('section'); transport.className = 'hl-transport';
+    this.pause = button('▶ Run', () => { this.pause.textContent = actions.toggle() ? 'Ⅱ Pause' : '▶ Run'; }, 'hl-play');
+    const speed = document.createElement('select'); speed.setAttribute('aria-label', 'Simulation speed'); for (const value of [.25, 1, 2, 5]) speed.add(new Option(`${value}×`, String(value), value === 1, value === 1)); speed.onchange = () => actions.speed(Number(speed.value));
+    this.clock.className = 'hl-clock';
+    transport.append(this.pause, speed, this.clock, button('Evacuate', () => this.execute(() => { actions.evacuate(); return 'Evacuation alarm activated.'; }, true)), button('Suppress', () => this.execute(() => `${actions.suppress()} fire(s) targeted.`, true)), button('Isolate', () => this.execute(() => { const ids = [...this.selected].filter(id => this.latest?.twins.find(t => t.id === id)?.kind === 'pipe'); if (!ids.length) throw new Error('Select a pipe first.'); actions.isolate(ids); return 'Selected lines isolated.'; }, true)), button('Compare response', () => { this.execute(() => { this.showForecast(actions.forecast()); return 'Comparison ready.'; }); }));
+    document.body.append(transport); this.events.className = 'hl-event-strip'; this.events.setAttribute('aria-label', 'Recent events'); document.body.append(this.events);
+    const notice = document.createElement('div'); notice.className = 'hl-model-note'; notice.textContent = 'REFERENCE SIMULATION · NOT AN OPERATIONAL SAFETY MODEL'; document.body.append(notice);
+    this.forecastPanel.className = 'hl-forecast'; this.forecastPanel.hidden = true; document.body.append(this.forecastPanel);
+    document.addEventListener('keydown', e => { if ((e.target as HTMLElement).matches('input,select,textarea,button')) return; if (e.code === 'Space') { e.preventDefault(); this.pause.click(); } if (e.key === 'Escape') { this.selected.clear(); this.refreshSelection(); } });
   }
- }
+  private execute(action: () => string, running = false) { try { this.feedback.textContent = action(); if (running) this.pause.textContent = 'Ⅱ Pause'; } catch (error) { this.feedback.textContent = error instanceof Error ? error.message : String(error); } }
+  private updateSeverity() { const binary = this.mode === 'outage' || this.mode === 'ignition'; this.severity.disabled = binary; this.severityLabel.textContent = binary ? 'Switch off service' : `Intensity · ${this.severity.value}%`; }
+  private renderAssets() {
+    if (!this.latest) return; const query = this.search.value.toLowerCase(); this.assetList.replaceChildren();
+    for (const twin of this.latest.twins.filter(t => !['weather', 'release', 'fire', 'explosion'].includes(t.kind) && `${t.id} ${t.kind} ${t.metadata.label}`.toLowerCase().includes(query))) {
+      const row = button('', () => {}, 'hl-asset'); row.setAttribute('aria-label', `Select ${twin.id}`); row.setAttribute('aria-pressed', String(this.selected.has(twin.id)));
+      const icon = document.createElement('span'); icon.className = `hl-asset-icon ${twin.kind}`; icon.textContent = twin.kind === 'worker' ? '♙' : twin.kind === 'wall' ? '▥' : twin.kind === 'route' ? '↗' : '◈';
+      const name = document.createElement('span'), strong = document.createElement('strong'), small = document.createElement('small'); strong.textContent = String(twin.metadata.label ?? twin.id); small.textContent = `${twin.id} · ${twin.integrity < .25 ? 'damaged' : twin.kind}`; name.append(strong, small); row.append(icon, name);
+      row.onclick = event => this.selectTwin(twin.id, event.shiftKey || event.ctrlKey || event.metaKey); this.assetList.append(row);
+    }
+  }
+  selectTwin(id: string, additive = false) { if (!this.latest?.twins.some(t => t.id === id)) return; if (!additive) this.selected.clear(); if (additive && this.selected.has(id)) this.selected.delete(id); else this.selected.add(id); this.refreshSelection(); }
+  private refreshSelection() {
+    this.renderAssets(); this.actions.select([...this.selected]); this.editor.hidden = !this.selected.size;
+    const twins = [...this.selected].map(id => this.latest!.twins.find(t => t.id === id)!);
+    this.target.textContent = twins.length === 1 ? String(twins[0].metadata.label ?? twins[0].id) : `${twins.length} objects`;
+    const available = twins.length && twins.every(t => t.active && t.integrity > 0) ? (failureModes[twins[0].kind] ?? []).filter(mode => twins.every(t => failureModes[t.kind]?.includes(mode))) : [];
+    if (!this.mode || !available.includes(this.mode)) this.mode = available[0]; this.modeGrid.replaceChildren();
+    for (const mode of available) { const details = modes[mode]; const b = button('', () => { this.mode = mode; this.refreshSelection(); }, 'hl-mode'); b.setAttribute('aria-label', details.label); b.setAttribute('aria-pressed', String(this.mode === mode)); const icon = document.createElement('span'); icon.textContent = details.icon; const title = document.createElement('strong'); title.textContent = details.label; const hint = document.createElement('small'); hint.textContent = details.detail; b.append(icon, title, hint); this.modeGrid.append(b); }
+    this.apply.disabled = !available.length; this.feedback.textContent = available.length ? '' : 'This object can be inspected, but has no available damage actions.'; this.updateSeverity();
+  }
+  private showForecast(result: ReturnType<typeof compareIntervention>) {
+    this.forecastPanel.hidden = false; this.forecastPanel.replaceChildren(); const h = document.createElement('h2'); h.textContent = 'Response comparison · 10 seconds'; const text = document.createElement('p'); text.textContent = `Active fires: ${result.baseline.activeFires} without response → ${result.candidate.activeFires} with suppression. Failed assets: ${result.baseline.failedAssets} → ${result.candidate.failedAssets}.`;
+    const note = document.createElement('p'); note.textContent = 'Two cloned worlds. Same initial conditions. Reference-model results, not a safety recommendation.'; this.forecastPanel.append(h, text, note, button('Close comparison', () => { this.forecastPanel.hidden = true; }));
+  }
+  update(snapshot: WorldSnapshot) {
+    this.latest = snapshot; this.clock.textContent = `${snapshot.time.toFixed(1).padStart(5, '0')} s`;
+    const key = snapshot.twins.filter(t => !['fire', 'release', 'explosion'].includes(t.kind)).map(t => `${t.id}:${t.integrity < .25}`).join('|');
+    if (key !== this.lastAssets) { this.lastAssets = key; this.renderAssets(); if (this.selected.size) this.refreshSelection(); }
+    const count = (kind: string) => snapshot.twins.filter(t => t.kind === kind && t.active).length;
+    const values = [[count('fire'), 'fires'], [count('release'), 'releases'], [snapshot.twins.filter(t => t.kind === 'wall' && t.integrity < .25).length, 'collapsed'], [snapshot.twins.filter(t => t.kind === 'worker' && t.metadata.status === 'safe').length, 'safe']] as const;
+    const summary = JSON.stringify(values); if (summary !== this.lastMetrics) { this.lastMetrics = summary; this.metrics.replaceChildren(); for (const [value, label] of values) { const cell = document.createElement('div'); cell.dataset.metric = label; const strong = document.createElement('strong'); strong.textContent = String(value); const span = document.createElement('span'); span.textContent = label === 'safe' ? 'of 8 people safe' : label; cell.append(strong, span); this.metrics.append(cell); } }
+    const total = snapshot.totalEvents ?? snapshot.events.length; if (total !== this.lastEvents) { this.lastEvents = total; const last = snapshot.events.filter(e => !['thermal.exposure', 'service.changed'].includes(e.type)).at(-1); this.events.textContent = last ? `${last.time.toFixed(1)}s  /  ${last.type.replaceAll('.', ' · ')}  /  ${last.sourceId}` : 'Ready. Select an object to explore a disturbance.'; }
+  }
 }

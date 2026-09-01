@@ -16,6 +16,7 @@ export class IndustrialTwin extends BaseTwin {
   onEvent(event: SimEvent, context: TwinContext): void {
     if (event.targetId !== this.state.id || this.state.integrity === 0) return;
     if (event.type === 'fault.asset') {
+      if (event.payload.mode === 'fire' || event.payload.mode === 'explosion') return;
       const severity = Number(event.payload.severity);
       if (!Number.isFinite(severity) || severity <= 0 || severity > 1) return;
       this.record(event, `operator ${event.payload.mode}`);
