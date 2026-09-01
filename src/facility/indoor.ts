@@ -35,6 +35,14 @@ export function generateIndoorFacility() {
     const wall = add(new WallTwin(`W-00${i + 5}`, { x: 2, y: 0, z: -10 + i * 5 }), 'Structure', `Fire partition ${i + 1}`);
     Object.assign(wall.state.metadata, { widthM: .45, heightM: 4.5, depthM: 4.6 });
   }
+  for (let i = 0; i < 3; i++) {
+    const wall = add(new WallTwin(`W-0${String(i + 8).padStart(2, '0')}`, { x: 6 + i * 7, y: 0, z: -14 }), 'Structure', `Rear services wall ${i + 1}`);
+    Object.assign(wall.state.metadata, { widthM: 6.8, heightM: 7, depthM: .45 });
+  }
+  for (const side of [-1, 1]) {
+    const wall = add(new WallTwin(side < 0 ? 'W-011' : 'W-012', { x: side * 25, y: 0, z: -6 }), 'Structure', side < 0 ? 'West hall wall' : 'East hall wall');
+    Object.assign(wall.state.metadata, { widthM: .45, heightM: 7, depthM: 16 });
+  }
   for (let i = 0; i < 4; i++) {
     const column = add(new WallTwin(`COL-00${i + 1}`, { x: -22 + i * 14.5, y: 0, z: -14 }), 'Structure', `Steel column ${i + 1}`);
     Object.assign(column.state.metadata, { widthM: .5, depthM: .5, heightM: 8, role: 'column' });

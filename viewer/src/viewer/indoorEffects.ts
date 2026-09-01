@@ -53,9 +53,11 @@ export class BlastEffect {
 export function createDebris(width: number, height: number, depth: number, column: boolean) {
   const root = new THREE.Group(), material = new THREE.MeshStandardMaterial({ color: column ? 0x48565e : 0x92958d, roughness: .95 });
   const count = column ? 5 : 20;
+  const span = Math.max(width, depth), thickness = Math.min(width, depth);
+  if (!column && depth > width) root.rotation.y = Math.PI / 2;
   for (let i = 0; i < count; i++) {
-    const piece = new THREE.Mesh(new THREE.BoxGeometry(column ? .45 : Math.max(.3, width / 5 - .06), height / 4 - .06, Math.max(.2, depth)), material);
-    piece.userData.start = new THREE.Vector3((i % 5 - 2) * width / 5, (Math.floor(i / 5) + .5) * height / 4, 0);
+    const piece = new THREE.Mesh(new THREE.BoxGeometry(column ? .45 : Math.max(.3, span / 5 - .06), height / 4 - .06, Math.max(.2, thickness)), material);
+    piece.userData.start = new THREE.Vector3((i % 5 - 2) * span / 5, (Math.floor(i / 5) + .5) * height / 4, 0);
     if (column) piece.userData.start.set(0, (i + .5) * height / count, 0);
     piece.castShadow = piece.receiveShadow = true; root.add(piece);
   }

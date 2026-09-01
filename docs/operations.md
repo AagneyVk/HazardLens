@@ -19,7 +19,12 @@ Changing the speed affects integration throughput, not the 0.05-second model ste
 - Startup message / blank 3D view: use a WebGL2-capable browser and inspect the console.
 - Disabled injection: select assets with a shared failure mode. Search filters the
   visible list; selections can remain outside the filter until **Clear** is used.
-- No suppression: check emergency systems, control-center availability and road integrity.
+- No suppression: check emergency systems and control-center availability (also road
+  integrity in the outdoor generator).
+- No visible wall collapse: select a wall or column and apply structural damage above
+  75%; lesser damage preserves its geometry. Nearby reference blasts can also damage it.
+- Workers blocked: inspect exit availability; evacuation routing is a simplified grid
+  model, not a validated life-safety calculation.
 - No plume after isolation or pump outage: new source withdrawal has stopped;
   previously released material can remain and disperse.
 - Reactor failure after cooling outage: this is the intended qualitative residual-heat

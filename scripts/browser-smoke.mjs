@@ -41,7 +41,7 @@ try {
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   await page.getByRole('button', { name: 'Select T-001', exact: true }).click();
   await page.getByRole('button', { name: 'Trigger blast', exact: true }).click();
-  await page.getByLabel('Failure severity', { exact: true }).fill('100');
+  await page.getByLabel('Failure severity', { exact: true }).press('End');
   await page.getByLabel('Simulation speed', { exact: true }).selectOption('0.25');
   await page.getByRole('button', { name: 'Apply disturbance', exact: true }).click();
   await page.waitForFunction(() => Number(document.querySelector('[data-metric="collapsed"] strong')?.textContent) > 0);

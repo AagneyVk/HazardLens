@@ -40,7 +40,12 @@ export class WorldRenderer {
       }
       object.position.set(twin.position.x, twin.position.y, twin.position.z);
       object.visible = twin.active || !['fire', 'explosion', 'release'].includes(twin.kind);
-      if (twin.kind === 'fire') this.fires.get(twin.id)!.update(snapshot.time, Number(twin.metadata.intensityMw));
+      if (twin.kind === 'fire') {
+        // Render at the vessel surface; do not move the model's radiation origin.
+        const source = snapshot.twins.find(t => t.id === twin.metadata.fuelSourceId);
+        object.position.y += source?.kind === 'tank' ? 3.8 : source?.kind === 'reactor' ? 5.1 : .4;
+        this.fires.get(twin.id)!.update(snapshot.time, Number(twin.metadata.intensityMw));
+      }
       else if (twin.kind === 'explosion') this.blasts.get(twin.id)!.update(Number(twin.metadata.age), Number(twin.metadata.radiusM));
       else if (twin.kind === 'release') { const r = Number(twin.metadata.radiusM); object.scale.set(r, Math.min(2, r * .5), r); }
       else if (twin.kind === 'worker') {

@@ -9,9 +9,17 @@ HazardLens is a qualitative reference simulator for research and training. It is
 validated predictor of toxic concentrations, blast distances, or real emergency outcomes.
 There is no live plant telemetry connection in this release.
 
-## Integrated facility
+## Indoor response lab
 
-One generator supplies both the simulation and the 3D view. The default facility has
+The default viewer is now a compact indoor factory with detailed process equipment,
+selectable walls and columns, eight animated workers and two exits. Ignite fires,
+trigger reference blasts, damage structures and watch evacuation in a cutaway hall.
+Flames, smoke, flash, sparks and falling debris follow simulation time, including pause
+and slow motion. See [design sources and model limits](docs/indoor-redesign.md).
+
+## Extended facility generator
+
+Each generator supplies both twin state and geometry metadata. The retained outdoor benchmark has
 **240 assets plus weather**, with stable IDs and a validated `FacilityTwinGraph`:
 
 | Asset | Count | ID prefix |
@@ -55,15 +63,15 @@ npm run test:browser    # requires a built viewer; exercises Chromium/WebGL
 ## Operator workflow
 
 1. Search by asset ID, type, or zone. Select multiple assets with Ctrl/Cmd-click,
-   or use **Select visible**. Shift-click adds 3D assets to the selection.
-2. Choose a supported shared failure mode and severity. **Inject failure** can be
+   or Shift-click. The same selection is highlighted in 3D.
+2. Choose a contextual damage action and intensity. **Apply disturbance** can be
    repeated on any available assets; there are no fixed incident scripts.
 3. Inspect temperature, integrity, operational state, providers and dependents.
-   **Show connections** reveals the generated graph.
+   **Connections** reveals the generated graph.
 4. Isolate selected pipes, suppress fires, or compare suppression against a cloned
    no-intervention continuation over ten seconds. The comparison does not mutate
    the live world or automatically apply a recommendation.
-5. Pause, change speed, reset, or export the incident as JSON with model version,
+5. Evacuate workers, pause, change speed, reset, or export the incident as JSON with model version,
    units, summary, topology, twin state and retained events.
 
 On narrow screens the console becomes a scrollable bottom panel. WebGL failures
@@ -76,7 +84,7 @@ produce a visible startup message. No account or server is required for local us
 - Finite source inventories with release/dispersal/combustion mass accounting.
 - Elapsed-time thermal dose, deterministic cloning and bounded retained history.
 - Locked dependencies and CI on Node 22 and 24.
-- Browser integration test with overview, cascade, and mobile screenshots.
+- Browser integration test with indoor overview, fire, blast, collapse and mobile screenshots.
 - Benchmark output and browser evidence retained as CI artifacts.
 
 The industrial expansion branch was already an ancestor of the foundation branch;
@@ -85,6 +93,7 @@ the integrated generator and graph.
 
 ## Documentation
 
+- [Indoor redesign, research and effect limitations](docs/indoor-redesign.md)
 - [Architecture and contracts](docs/architecture.md)
 - [Model registry, sources, and limitations](docs/model-register.md)
 - [Verification and release gates](docs/validation.md)
