@@ -40,7 +40,7 @@ export class ReleaseTwin extends BaseTwin {
 export class FireTwin extends BaseTwin {
  private standaloneFuelKg=200;burnedKg=0;
  constructor(id:string,position:Vec3,public intensityMw:number,public fuelSourceId?:string){
-  super({id,kind:'fire',position:{...position},fidelity:3,active:true,integrity:1,temperatureK:1100,metadata:{intensityMw,fuelSourceId}},
+  super({id,kind:'fire',position:{...position},fidelity:3,active:true,integrity:1,temperatureK:1100,metadata:{intensityMw,fuelSourceId:fuelSourceId??''}},
    {physicalProfile:{material:'combustion',properties:{intensityMw,model:'radiation-reference-v2'}}});
  }
  onEvent(event:SimEvent){

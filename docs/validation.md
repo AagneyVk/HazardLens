@@ -11,8 +11,10 @@ The hand-calculated thermal case uses a 1 MW reference fire 10 m from a tank for
 
 `npm run viewer:build` type-checks all viewer sources and builds the static application.
 `npm run test:browser` starts that built application in Chromium with software WebGL.
-It exercises 240-asset boot, multi-selection and faults, graph overlay, counterfactual
-comparison, export schema, reset, search, cooling failure, and a narrow viewport.
+It exercises indoor boot, contextual actions, fire, blast, wall collapse, evacuation
+state, pause, multi-selection, isolation, graph overlay, counterfactual comparison,
+export schema, reset, search and a narrow viewport. Indoor core tests also cover
+blocked exits, successful evacuation and deterministic cloning mid-incident.
 Screenshots are produced for human inspection. Software WebGL success is not an FPS
 guarantee for user hardware.
 

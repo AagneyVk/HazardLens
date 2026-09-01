@@ -10,9 +10,14 @@ HazardLens does not implement or claim conformance to the listed standards or to
 | [NIST FDS documentation](https://pages.nist.gov/fds-smv/manuals.html) | Separate verification, experimental validation and configuration records | No CFD/FDS calculation is executed here |
 | [NOAA ALOHA limitations](https://response.restoration.noaa.gov/oil-and-chemical-spills/chemical-spills/response-tools/alohas-limitations.html) | Avoid presenting an illustrative plume as a validated threat zone; state environmental limitations | No ALOHA equivalence, dense-gas solver, toxic LOC, BLEVE or blast solver |
 | [Three.js resource cleanup](https://threejs.org/manual/en/cleanup.html) | Explicit geometry/material disposal on reset/removal | GPU memory depends on browser and hardware |
-| [Three.js instanced meshes](https://threejs.org/docs/pages/InstancedMesh.html) | Road markings share instanced geometry to reduce draw calls | Major equipment remains individually selectable meshes |
+| [Three.js instanced meshes](https://threejs.org/docs/pages/InstancedMesh.html) | Reviewed for large-scene optimization | Indoor equipment remains individually selectable meshes |
 
 ## Reference parameters
+
+The indoor viewer adds reference blast impulses, analytic falling debris and grid-based
+evacuation. Their rendering sources and explicit physical limitations are documented in
+[Indoor response lab](indoor-redesign.md). Indoor walls do not shield the existing
+radiation model or constrain the illustrative gas envelope.
 
 | Component | Reference behavior | Units / assumptions |
 |---|---|---|
